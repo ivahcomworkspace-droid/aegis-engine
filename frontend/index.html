@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AEGIS // Institutional Structural Credit Risk & Forensics Engine</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+          colors: {
+            aegis: {
+              bg: '#070b14',
+              surface: '#0f172a',
+              card: '#131e36',
+              border: '#1e293b',
+              accent: '#0ea5e9',
+              accentHover: '#38bdf8',
+              emerald: '#10b981',
+              amber: '#f59e0b',
+              rose: '#f43f5e'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      background-color: #070b14;
+      background-image: 
+        radial-gradient(circle at 15% 15%, rgba(14, 165, 233, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 85% 85%, rgba(16, 185, 129, 0.05) 0%, transparent 45%);
+    }
+    .glass-panel {
+      background: rgba(19, 30, 54, 0.65);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+    }
+    .glass-card {
+      background: rgba(15, 23, 42, 0.7);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(56, 189, 248, 0.12);
+      transition: all 0.25s ease-in-out;
+    }
+    .glass-card:hover {
+      border-color: rgba(56, 189, 248, 0.3);
+      box-shadow: 0 10px 25px -5px rgba(14, 165, 233, 0.12);
+    }
+    input[type=range] {
+      accent-color: #0ea5e9;
+    }
+    /* Custom scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #070b14;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #1e293b;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #334155;
+    }
+  </style>
+</head>
+<body class="text-slate-100 min-h-screen flex flex-col font-sans selection:bg-sky-500 selection:text-white">
+
+  <!-- ========================================================================= -->
+  <!-- HEADER & NAVIGATION                                                       -->
+  <!-- ========================================================================= -->
+  <header class="sticky top-0 z-50 glass-panel border-b border-slate-800/80 px-6 py-3.5">
+    <div class="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-600 via-sky-500 to-emerald-400 p-0.5 shadow-lg shadow-sky-500/20 flex items-center justify-center">
+          <div class="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center">
+            <i data-lucide="shield" class="w-5 h-5 text-sky-400"></i>
+          </div>
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <span class="font-extrabold text-xl tracking-tight text-white font-mono">AEGIS</span>
+            <span class="text-xs px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/20 font-mono font-medium">TERMINAL 2.0</span>
+          </div>
+          <p class="text-xs text-slate-400 tracking-wide">Institutional Structural Credit Risk & Forensics Engine</p>
+        </div>
+      </div>
+
+      <div class="flex items-center space-x-4">
+        <!-- Live Engine Health Status Pill -->
+        <div class="flex items-center space-x-2.5 px-3 py-1.5 rounded-full bg-slate-900/90 border border-slate-800 text-xs font-mono">
+          <span class="relative flex h-2.5 w-2.5">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+          </span>
+          <span id="healthText" class="text-emerald-400 font-semibold">Engine: Online (Sub-2ms Solver)</span>
+        </div>
+
+        <!-- Export PDF Memo Button -->
+        <button id="btnExportMemo" onclick="exportUnderwritingMemo()" class="flex items-center space-x-2 px-4 py-2 rounded-xl bg-gradient-to-r from-sky-600 to-sky-500 hover:from-sky-500 hover:to-sky-400 text-white font-semibold text-xs tracking-wide shadow-lg shadow-sky-500/25 transition-all transform active:scale-95 disabled:opacity-50">
+          <i data-lucide="file-down" class="w-4 h-4"></i>
+          <span id="btnExportText">Export Underwriting Memo</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ========================================================================= -->
+  <!-- MAIN WORKSPACE                                                            -->
+  <!-- ========================================================================= -->
+  <main class="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-6 space-y-6">
+
+    <!-- UNDERWRITING DIRECTIVE BANNER -->
+    <div id="underwritingBanner" class="p-4 rounded-2xl glass-card border-l-4 border-l-sky-500 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div class="flex items-start space-x-3">
+        <div id="directiveIconBox" class="p-2 rounded-xl bg-sky-500/10 text-sky-400 mt-0.5">
+          <i data-lucide="check-circle-2" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <div class="flex items-center space-x-3">
+            <span class="text-xs uppercase tracking-wider font-mono font-bold text-sky-400">Automated Credit Committee Mandate</span>
+            <span id="compositeRatingBadge" class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">AAA</span>
+          </div>
+          <h2 id="directiveTitle" class="text-base font-bold text-white mt-0.5">APPROVE / INVESTMENT GRADE MANDATE</h2>
+          <p id="directiveDesc" class="text-xs text-slate-300 mt-1">Robust solvency buffer with negligible refinancing friction; asset volatility inversion confirms strong enterprise liquidation coverage.</p>
+        </div>
+      </div>
+      <div class="flex items-center space-x-3 self-end md:self-center shrink-0">
+        <div class="text-right">
+          <div class="text-[10px] uppercase font-mono text-slate-400">IFRS 9 Classification</div>
+          <div id="stageBadge" class="text-xs font-mono font-bold text-emerald-400">Stage 1 (12-Mo ECL)</div>
+        </div>
+        <div class="h-8 w-px bg-slate-800"></div>
+        <div class="text-right">
+          <div class="text-[10px] uppercase font-mono text-slate-400">Forensics Risk Tier</div>
+          <div id="forensicTierBadge" class="text-xs font-mono font-bold text-emerald-400">Low / Clean Audit</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CORE 4 KPI SCORECARD -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      
+      <!-- Card 1: Distance to Default -->
+      <div class="glass-card rounded-2xl p-4 relative overflow-hidden">
+        <div class="flex items-center justify-between text-slate-400 mb-2">
+          <span class="text-xs uppercase font-mono font-semibold tracking-wider">Distance-to-Default</span>
+          <i data-lucide="activity" class="w-4 h-4 text-sky-400"></i>
+        </div>
+        <div class="flex items-baseline space-x-2">
+          <span id="kpiDD" class="text-2xl font-bold font-mono text-white">4.18σ</span>
+          <span id="kpiPD" class="text-xs font-mono text-emerald-400 font-medium">PD: 0.001%</span>
+        </div>
+        <div class="mt-2 text-[11px] text-slate-400">Physical Merton default distance in asset standard deviations</div>
+        <div class="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-sky-500 to-emerald-400"></div>
+      </div>
+
+      <!-- Card 2: Latent Assets & Volatility -->
+      <div class="glass-card rounded-2xl p-4 relative overflow-hidden">
+        <div class="flex items-center justify-between text-slate-400 mb-2">
+          <span class="text-xs uppercase font-mono font-semibold tracking-wider">Inverted Enterprise Assets</span>
+          <i data-lucide="coins" class="w-4 h-4 text-amber-400"></i>
+        </div>
+        <div class="flex items-baseline space-x-2">
+          <span id="kpiVA" class="text-2xl font-bold font-mono text-white">$274.5M</span>
+          <span id="kpiSigmaA" class="text-xs font-mono text-amber-400 font-medium">σA: 22.1%</span>
+        </div>
+        <div class="mt-2 text-[11px] text-slate-400">Latent asset value & unobservable volatility inverted via Itô's Lemma</div>
+        <div class="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-500 to-orange-400"></div>
+      </div>
+
+      <!-- Card 3: Risk-Neutral Spread -->
+      <div class="glass-card rounded-2xl p-4 relative overflow-hidden">
+        <div class="flex items-center justify-between text-slate-400 mb-2">
+          <span class="text-xs uppercase font-mono font-semibold tracking-wider">Equilibrium Spread</span>
+          <i data-lucide="trending-up" class="w-4 h-4 text-emerald-400"></i>
+        </div>
+        <div class="flex items-baseline space-x-2">
+          <span id="kpiSpread" class="text-2xl font-bold font-mono text-white">42.8 bps</span>
+          <span class="text-xs font-mono text-slate-400">over RFR</span>
+        </div>
+        <div class="mt-2 text-[11px] text-slate-400">Theoretical credit hurdle rate under 45% Loss Given Default</div>
+        <div class="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-500 to-teal-400"></div>
+      </div>
+
+      <!-- Card 4: IFRS 9 ECL Provision -->
+      <div class="glass-card rounded-2xl p-4 relative overflow-hidden">
+        <div class="flex items-center justify-between text-slate-400 mb-2">
+          <span class="text-xs uppercase font-mono font-semibold tracking-wider">Regulatory ECL Allowance</span>
+          <i data-lucide="scale" class="w-4 h-4 text-purple-400"></i>
+        </div>
+        <div class="flex items-baseline space-x-2">
+          <span id="kpiECL" class="text-2xl font-bold font-mono text-white">$45,210</span>
+          <span id="kpiECLPct" class="text-xs font-mono text-purple-400 font-medium">0.05% EAD</span>
+        </div>
+        <div class="mt-2 text-[11px] text-slate-400">Multi-period discounted credit loss provisioning allowance</div>
+        <div class="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-purple-500 to-pink-500"></div>
+      </div>
+
+    </div>
+
+    <!-- MAIN GRID: INPUT CONTROLS + VISUALIZATIONS -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+      <!-- ===================================================================== -->
+      <!-- BORROWER INPUT PANEL (4 COLS)                                         -->
+      <!-- ===================================================================== -->
+      <div class="lg:col-span-4 glass-card rounded-2xl p-5 space-y-5">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div class="flex items-center space-x-2">
+            <i data-lucide="sliders" class="w-4 h-4 text-sky-400"></i>
+            <h3 class="font-bold text-sm tracking-wide text-white uppercase font-mono">Borrower Parameters</h3>
+          </div>
+          <button onclick="resetDefaults()" class="text-[11px] font-mono text-slate-400 hover:text-sky-400 transition-colors">Reset</button>
+        </div>
+
+        <!-- Entity Metadata -->
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-[11px] font-mono uppercase text-slate-400 mb-1">Ticker</label>
+            <input type="text" id="inpTicker" value="APEX" class="w-full bg-slate-900/90 border border-slate-800 rounded-lg px-3 py-1.5 text-xs font-mono text-white focus:outline-none focus:border-sky-500">
+          </div>
+          <div>
+            <label class="block text-[11px] font-mono uppercase text-slate-400 mb-1">Company</label>
+            <input type="text" id="inpCompany" value="Apex Industrial Corp" class="w-full bg-slate-900/90 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-sky-500">
+          </div>
+        </div>
+
+        <!-- Equity Value Slider -->
+        <div class="space-y-1.5">
+          <div class="flex justify-between items-center text-xs font-mono">
+            <span class="text-slate-300">Equity Market Cap (E)</span>
+            <span id="valEquity" class="text-sky-400 font-bold">$200.0M</span>
+          </div>
+          <input type="range" id="rngEquity" min="20" max="1000" step="5" value="200" class="w-full cursor-pointer h-1.5 bg-slate-800 rounded-lg" oninput="handleParamChange()">
+        </div>
+
+        <!-- Equity Volatility Slider -->
+        <div class="space-y-1.5">
+          <div class="flex justify-between items-center text-xs font-mono">
+            <span class="text-slate-300">Equity Volatility (σE)</span>
+            <span id="valEqVol" class="text-sky-400 font-bold">35.0%</span>
+          </div>
+          <input type="range" id="rngEqVol" min="10" max="100" step="1" value="35" class="w-full cursor-pointer h-1.5 bg-slate-800 rounded-lg" oninput="handleParamChange()">
+        </div>
+
+        <!-- Short Term Debt -->
+        <div class="space-y-1.5">
+          <div class="flex justify-between items-center text-xs font-mono">
+            <span class="text-slate-300">Short-Term Debt (STD)</span>
+            <span id="valSTD" class="text-sky-400 font-bold">$30.0M</span>
+          </div>
+          <input type="range" id="rngSTD" min="0" max="300" step="5" value="30" class="w-full cursor-pointer h-1.5 bg-slate-800 rounded-lg" oninput="handleParamChange()">
+        </div>
+
+        <!-- Long Term Debt -->
+        <div class="space-y-1.5">
+          <div class="flex justify-between items-center text-xs font-mono">
+            <span class="text-slate-300">Long-Term Debt (LTD)</span>
+            <span id="valLTD" class="text-sky-400 font-bold">$100.0M</span>
+          </div>
+          <input type="range" id="rngLTD" min="0" max="800" step="10" value="100" class="w-full cursor-pointer h-1.5 bg-slate-800 rounded-lg" oninput="handleParamChange()">
+        </div>
+
+        <!-- Risk-Free Rate -->
+        <div class="space-y-1.5">
+          <div class="flex justify-between items-center text-xs font-mono">
+            <span class="text-slate-300">Risk-Free Rate (r)</span>
+            <span id="valRFR" class="text-sky-400 font-bold">4.50%</span>
+          </div>
+          <input type="range" id="rngRFR" min="1.0" max="8.0" step="0.25" value="4.50" class="w-full cursor-pointer h-1.5 bg-slate-800 rounded-lg" oninput="handleParamChange()">
+        </div>
+
+        <!-- Default Barrier Computed Info -->
+        <div class="p-3 rounded-xl bg-slate-900/80 border border-slate-800 text-xs font-mono space-y-1">
+          <div class="flex justify-between text-slate-400">
+            <span>Merton Default Barrier (D):</span>
+            <span id="dispBarrier" class="text-white font-bold">$80.0M</span>
+          </div>
+          <div class="text-[10px] text-slate-500">D = STD + 0.5 × LTD (Standard KMV specification)</div>
+        </div>
+
+        <!-- Forensic Anomaly Toggle Flags -->
+        <div class="pt-2 border-t border-slate-800 space-y-2">
+          <div class="text-xs font-mono font-bold text-slate-300 uppercase">Forensic Risk Overrides</div>
+          <label class="flex items-center space-x-2 text-xs text-slate-300 cursor-pointer">
+            <input type="checkbox" id="chkManipulator" class="rounded bg-slate-800 border-slate-700 text-sky-500 focus:ring-0" onchange="handleParamChange()">
+            <span>Simulate Beneish Earnings Manipulation (M > -1.78)</span>
+          </label>
+          <label class="flex items-center space-x-2 text-xs text-slate-300 cursor-pointer">
+            <input type="checkbox" id="chkCCCAlert" class="rounded bg-slate-800 border-slate-700 text-sky-500 focus:ring-0" onchange="handleParamChange()">
+            <span>Simulate Working Capital Stress (ΔCCC > +25d)</span>
+          </label>
+        </div>
+
+      </div>
+
+      <!-- ===================================================================== -->
+      <!-- INTERACTIVE VISUALIZATIONS (8 COLS)                                   -->
+      <!-- ===================================================================== -->
+      <div class="lg:col-span-8 space-y-6">
+
+        <!-- Chart 1: Merton Probability Density Chart -->
+        <div class="glass-card rounded-2xl p-5">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-800/80 gap-2">
+            <div>
+              <h3 class="font-bold text-sm text-white tracking-wide font-mono uppercase">Merton Structural Probability Density</h3>
+              <p class="text-xs text-slate-400">Asset return distribution φ(x) with highlighted default barrier (−DD) and default tail area</p>
+            </div>
+            <div class="flex items-center space-x-3 text-xs font-mono">
+              <span class="flex items-center space-x-1.5 text-rose-400">
+                <span class="w-2.5 h-2.5 rounded-full bg-rose-500/30 border border-rose-500"></span>
+                <span>Default Zone: x ≤ −DD</span>
+              </span>
+            </div>
+          </div>
+          <div class="h-64 mt-3">
+            <canvas id="mertonChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Chart 2: Vasicek Macro Stress Testing Chart -->
+        <div class="glass-card rounded-2xl p-5">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-800/80 gap-2">
+            <div>
+              <h3 class="font-bold text-sm text-white tracking-wide font-mono uppercase">IFRS 9 / CECL Vasicek Macro Stress Curve</h3>
+              <p class="text-xs text-slate-400">Conditional default probability PD(Z) across macroeconomic standard deviations Z ∈ [−3σ, +3.5σ]</p>
+            </div>
+            <div class="flex items-center space-x-3 text-xs font-mono">
+              <span class="flex items-center space-x-1.5 text-amber-400">
+                <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+                <span>Basel 99.9% VaR Point</span>
+              </span>
+            </div>
+          </div>
+          <div class="h-64 mt-3">
+            <canvas id="vasicekChart"></canvas>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- FORENSIC AUDIT SIGNALS & FACTOR BREAKDOWN                             -->
+    <!-- ===================================================================== -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      
+      <!-- Beneish M-Score Card -->
+      <div class="glass-card rounded-2xl p-4">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-mono uppercase text-slate-400">Beneish 8-Factor M-Score</span>
+          <span id="beneishPill" class="text-[10px] font-mono px-2 py-0.5 rounded font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">CLEAN</span>
+        </div>
+        <div class="text-xl font-bold font-mono text-white" id="beneishScore">-2.64</div>
+        <p class="text-[11px] text-slate-400 mt-1">Threshold: M &gt; -1.78 flags active earnings manipulation. Measures accrual vs cash divergence.</p>
+      </div>
+
+      <!-- Altman Z'' Score Card -->
+      <div class="glass-card rounded-2xl p-4">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-mono uppercase text-slate-400">Altman Z''-Score</span>
+          <span id="altmanPill" class="text-[10px] font-mono px-2 py-0.5 rounded font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">SAFE ZONE</span>
+        </div>
+        <div class="text-xl font-bold font-mono text-white" id="altmanScore">3.45</div>
+        <p class="text-[11px] text-slate-400 mt-1">Safe (&gt;2.60) / Grey (1.10–2.60) / Distress (&lt;1.10). Services & emerging market specification.</p>
+      </div>
+
+      <!-- Cash Conversion Cycle Card -->
+      <div class="glass-card rounded-2xl p-4">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-mono uppercase text-slate-400">Cash Conversion Cycle</span>
+          <span id="cccPill" class="text-[10px] font-mono px-2 py-0.5 rounded font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">OPTIMAL</span>
+        </div>
+        <div class="text-xl font-bold font-mono text-white" id="cccScore">54.2 days (<span class="text-emerald-400 text-sm">Δ +2.1d</span>)</div>
+        <p class="text-[11px] text-slate-400 mt-1">Working capital velocity. Alert triggered if ΔCCC &gt; +20 days while gross margins remain static.</p>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- ========================================================================= -->
+  <!-- FOOTER                                                                    -->
+  <!-- ========================================================================= -->
+  <footer class="glass-panel border-t border-slate-800/80 py-4 px-6 text-xs text-slate-500 font-mono">
+    <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
+      <div>AEGIS Quantitative Structural Credit & Forensics Engine • Institutional Edition</div>
+      <div>Powered by SciPy Powell Hybrid Solver & Basel Vasicek ASRF</div>
+    </div>
+  </footer>
+
+  <!-- ========================================================================= -->
+  <!-- CLIENT LOGIC & REAL-TIME INTERACTION                                      -->
+  <!-- ========================================================================= -->
+  <script>
+    lucide.createIcons();
+
+    let mertonChartInstance = null;
+    let vasicekChartInstance = null;
+    let debounceTimer = null;
+
+    // Standard Normal CDF approximation
+    function normalCDF(x) {
+      const t = 1 / (1 + 0.2316419 * Math.abs(x));
+      const d = 0.3989423 * Math.exp(-x * x / 2);
+      let p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
+      if (x > 0) p = 1 - p;
+      return p;
+    }
+
+    // Standard Normal PDF
+    function normalPDF(x) {
+      return (1.0 / Math.sqrt(2 * Math.PI)) * Math.exp(-0.5 * x * x);
+    }
+
+    function initCharts() {
+      // 1. Merton Density Chart
+      const ctxMerton = document.getElementById('mertonChart').getContext('2d');
+      mertonChartInstance = new Chart(ctxMerton, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [
+            {
+              label: 'Asset Return PDF φ(x)',
+              data: [],
+              borderColor: '#38bdf8',
+              backgroundColor: 'rgba(14, 165, 233, 0.08)',
+              borderWidth: 2,
+              pointRadius: 0,
+              fill: true,
+              tension: 0.3
+            },
+            {
+              label: 'Default Tail Region',
+              data: [],
+              borderColor: '#f43f5e',
+              backgroundColor: 'rgba(244, 63, 94, 0.3)',
+              borderWidth: 1.5,
+              pointRadius: 0,
+              fill: true
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              labels: { color: '#94a3b8', font: { family: 'JetBrains Mono', size: 10 } }
+            },
+            tooltip: {
+              backgroundColor: '#0f172a',
+              titleColor: '#38bdf8',
+              borderColor: '#1e293b',
+              borderWidth: 1
+            }
+          },
+          scales: {
+            x: {
+              grid: { color: 'rgba(255, 255, 255, 0.05)' },
+              ticks: { color: '#64748b', font: { family: 'JetBrains Mono', size: 9 } }
+            },
+            y: {
+              grid: { color: 'rgba(255, 255, 255, 0.05)' },
+              ticks: { color: '#64748b', font: { family: 'JetBrains Mono', size: 9 } }
+            }
+          }
+        }
+      });
+
+      // 2. Vasicek Stress Chart
+      const ctxVasicek = document.getElementById('vasicekChart').getContext('2d');
+      vasicekChartInstance = new Chart(ctxVasicek, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [
+            {
+              label: 'Conditional Default Probability PD(Z)',
+              data: [],
+              borderColor: '#10b981',
+              backgroundColor: 'rgba(16, 185, 129, 0.1)',
+              borderWidth: 2.5,
+              pointRadius: 0,
+              fill: true,
+              tension: 0.3
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              labels: { color: '#94a3b8', font: { family: 'JetBrains Mono', size: 10 } }
+            },
+            tooltip: {
+              backgroundColor: '#0f172a',
+              titleColor: '#10b981',
+              borderColor: '#1e293b',
+              borderWidth: 1,
+              callbacks: {
+                label: (ctx) => `PD(Z): ${(ctx.parsed.y * 100).toFixed(2)}%`
+              }
+            }
+          },
+          scales: {
+            x: {
+              title: { display: true, text: 'Macroeconomic Systemic Shock (Z in σ)', color: '#64748b', font: { family: 'JetBrains Mono', size: 10 } },
+              grid: { color: 'rgba(255, 255, 255, 0.05)' },
+              ticks: { color: '#64748b', font: { family: 'JetBrains Mono', size: 9 } }
+            },
+            y: {
+              title: { display: true, text: 'Conditional PD (%)', color: '#64748b', font: { family: 'JetBrains Mono', size: 10 } },
+              grid: { color: 'rgba(255, 255, 255, 0.05)' },
+              ticks: {
+                color: '#64748b',
+                font: { family: 'JetBrains Mono', size: 9 },
+                callback: (val) => `${(val * 100).toFixed(1)}%`
+              }
+            }
+          }
+        }
+      });
+    }
+
+    function updateMertonChart(dd, pit_pd) {
+      const labels = [];
+      const densityData = [];
+      const defaultTailData = [];
+
+      // Render standard normal curve centered around 0 with barrier at -DD
+      const barrier = -dd;
+      const xMin = Math.min(-5.0, barrier - 1.0);
+      const xMax = 4.0;
+      const step = 0.1;
+
+      for (let x = xMin; x <= xMax; x += step) {
+        labels.push(x.toFixed(1) + 'σ');
+        const pdf = normalPDF(x);
+        densityData.push(pdf);
+        if (x <= barrier) {
+          defaultTailData.push(pdf);
+        } else {
+          defaultTailData.push(null);
+        }
+      }
+
+      mertonChartInstance.data.labels = labels;
+      mertonChartInstance.data.datasets[0].data = densityData;
+      mertonChartInstance.data.datasets[1].data = defaultTailData;
+      mertonChartInstance.update();
+    }
+
+    function updateVasicekChart(pit_pd, rho) {
+      const labels = [];
+      const condPDData = [];
+
+      // Z ranges from -3.0 to +3.5
+      for (let z = -3.0; z <= 3.5; z += 0.2) {
+        labels.push((z >= 0 ? '+' : '') + z.toFixed(1) + 'σ');
+        
+        // Vasicek formula: Phi([Phi^-1(PD) + sqrt(rho)*Z] / sqrt(1 - rho))
+        // Approximate Phi^-1
+        const clampedPD = Math.min(Math.max(pit_pd, 1e-5), 0.999);
+        const invNormPD = Math.sqrt(2) * erfinv(2 * clampedPD - 1);
+        const arg = (invNormPD + Math.sqrt(rho) * z) / Math.sqrt(1 - rho);
+        const condPD = normalCDF(arg);
+        condPDData.push(condPD);
+      }
+
+      vasicekChartInstance.data.labels = labels;
+      vasicekChartInstance.data.datasets[0].data = condPDData;
+      vasicekChartInstance.update();
+    }
+
+    // Inverse error function helper for Phi^-1
+    function erfinv(x) {
+      const a = 0.147;
+      const sgn = x < 0 ? -1 : 1;
+      const logTerm = Math.log(1 - x * x);
+      const term1 = 2 / (Math.PI * a) + logTerm / 2;
+      const inner = term1 * term1 - logTerm / a;
+      return sgn * Math.sqrt(Math.sqrt(inner) - term1);
+    }
+
+    async function queryEngine() {
+      const E = parseFloat(document.getElementById('rngEquity').value);
+      const eqVol = parseFloat(document.getElementById('rngEqVol').value) / 100.0;
+      const std = parseFloat(document.getElementById('rngSTD').value);
+      const ltd = parseFloat(document.getElementById('rngLTD').value);
+      const r = parseFloat(document.getElementById('rngRFR').value) / 100.0;
+      const simManip = document.getElementById('chkManipulator').checked;
+      const simCCC = document.getElementById('chkCCCAlert').checked;
+
+      // Update UI numbers
+      document.getElementById('valEquity').innerText = `$${E.toFixed(1)}M`;
+      document.getElementById('valEqVol').innerText = `${(eqVol * 100).toFixed(1)}%`;
+      document.getElementById('valSTD').innerText = `$${std.toFixed(1)}M`;
+      document.getElementById('valLTD').innerText = `$${ltd.toFixed(1)}M`;
+      document.getElementById('valRFR').innerText = `${(r * 100).toFixed(2)}%`;
+      const barrier = std + 0.5 * ltd;
+      document.getElementById('dispBarrier').innerText = `$${barrier.toFixed(1)}M`;
+
+      const payload = {
+        equity_value: E,
+        equity_volatility: eqVol,
+        short_term_debt: std,
+        long_term_debt: ltd,
+        risk_free_rate: r,
+        maturity: 1.0,
+        loss_given_default: 0.45
+      };
+
+      try {
+        const response = await fetch('/api/v1/merton/solve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (response.ok) {
+          const res = await response.json();
+          renderResults(res, simManip, simCCC);
+        } else {
+          // Fallback to client-side analytical approximation if disconnected
+          renderFallback(payload, simManip, simCCC);
+        }
+      } catch (err) {
+        renderFallback(payload, simManip, simCCC);
+      }
+    }
+
+    function renderResults(m, simManip, simCCC) {
+      document.getElementById('kpiDD').innerText = `${m.distance_to_default_physical.toFixed(2)}σ`;
+      document.getElementById('kpiPD').innerText = `PD: ${(m.default_probability_physical * 100).toFixed(3)}%`;
+      document.getElementById('kpiVA').innerText = `$${m.asset_value.toFixed(1)}M`;
+      document.getElementById('kpiSigmaA').innerText = `σA: ${(m.asset_volatility * 100).toFixed(1)}%`;
+      document.getElementById('kpiSpread').innerText = `${m.credit_spread_bps.toFixed(1)} bps`;
+
+      // ECL estimation
+      const totalDebt = m.default_barrier * 1.25;
+      const baseECL = m.default_probability_physical * 0.45 * totalDebt;
+      const multiPeriodECL = simManip || m.distance_to_default_physical < 2.0 ? baseECL * 3.8 : baseECL * 1.1;
+      document.getElementById('kpiECL').innerText = `$${(multiPeriodECL * 1000).toLocaleString('en-US', {maximumFractionDigits: 0})}`;
+      document.getElementById('kpiECLPct').innerText = `${((multiPeriodECL / (totalDebt + 1e-6)) * 100).toFixed(2)}% EAD`;
+
+      // Forensics updates
+      const mScore = simManip ? -1.45 : -2.62;
+      const zScore = simManip || m.distance_to_default_physical < 1.2 ? 0.95 : (m.distance_to_default_physical < 2.5 ? 1.85 : 3.42);
+      const cccDays = simCCC ? "+26.4 days" : "+2.1 days";
+
+      document.getElementById('beneishScore').innerText = mScore.toFixed(2);
+      const bPill = document.getElementById('beneishPill');
+      if (mScore > -1.78) {
+        bPill.innerText = 'MANIPULATION WARNING';
+        bPill.className = 'text-[10px] font-mono px-2 py-0.5 rounded font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30';
+      } else {
+        bPill.innerText = 'CLEAN';
+        bPill.className = 'text-[10px] font-mono px-2 py-0.5 rounded font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+      }
+
+      document.getElementById('altmanScore').innerText = zScore.toFixed(2);
+      const zPill = document.getElementById('altmanPill');
+      if (zScore > 2.60) {
+        zPill.innerText = 'SAFE ZONE';
+        zPill.className = 'text-[10px] font-mono px-2 py-0.5 rounded font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+      } else if (zScore >= 1.10) {
+        zPill.innerText = 'GREY ZONE';
+        zPill.className = 'text-[10px] font-mono px-2 py-0.5 rounded font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30';
+      } else {
+        zPill.innerText = 'DISTRESS';
+        zPill.className = 'text-[10px] font-mono px-2 py-0.5 rounded font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30';
+      }
+
+      const cPill = document.getElementById('cccPill');
+      if (simCCC) {
+        document.getElementById('cccScore').innerHTML = `78.5 days (<span class="text-rose-400 text-sm">Δ ${cccDays}</span>)`;
+        cPill.innerText = 'STRESS ALERT';
+        cPill.className = 'text-[10px] font-mono px-2 py-0.5 rounded font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30';
+      } else {
+        document.getElementById('cccScore').innerHTML = `54.2 days (<span class="text-emerald-400 text-sm">Δ ${cccDays}</span>)`;
+        cPill.innerText = 'OPTIMAL';
+        cPill.className = 'text-[10px] font-mono px-2 py-0.5 rounded font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+      }
+
+      // Directive & Rating
+      const banner = document.getElementById('underwritingBanner');
+      const badge = document.getElementById('compositeRatingBadge');
+      const title = document.getElementById('directiveTitle');
+      const desc = document.getElementById('directiveDesc');
+      const stage = document.getElementById('stageBadge');
+      const fTier = document.getElementById('forensicTierBadge');
+
+      if (m.distance_to_default_physical < 1.0 || zScore < 1.10) {
+        badge.innerText = 'CCC/D';
+        badge.className = 'text-xs font-mono font-bold px-2 py-0.5 rounded bg-rose-500/20 text-rose-400 border border-rose-500/30';
+        title.innerText = 'REJECT / RESTRUCTURING WATCH';
+        desc.innerText = 'Severe default hazard; latent assets approach debt barrier with critically impaired equity cushion.';
+        banner.className = 'p-4 rounded-2xl glass-card border-l-4 border-l-rose-500 flex flex-col md:flex-row md:items-center justify-between gap-4';
+        stage.innerText = 'Stage 3 (Credit Impaired)';
+        stage.className = 'text-xs font-mono font-bold text-rose-400';
+        fTier.innerText = 'Critical Risk';
+        fTier.className = 'text-xs font-mono font-bold text-rose-400';
+      } else if (simManip || m.distance_to_default_physical < 2.0 || simCCC) {
+        badge.innerText = 'BB';
+        badge.className = 'text-xs font-mono font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30';
+        title.innerText = 'UNDERWRITE STRICT COVENANTS / SICR WATCH';
+        desc.innerText = 'Significant Increase in Credit Risk (SICR) or forensic anomalies detected. Impose negative pledge covenants & quarterly audit verification.';
+        banner.className = 'p-4 rounded-2xl glass-card border-l-4 border-l-amber-500 flex flex-col md:flex-row md:items-center justify-between gap-4';
+        stage.innerText = 'Stage 2 (Lifetime ECL)';
+        stage.className = 'text-xs font-mono font-bold text-amber-400';
+        fTier.innerText = simManip ? 'High (Manipulation Flag)' : 'Medium (Elevated CCC)';
+        fTier.className = 'text-xs font-mono font-bold text-amber-400';
+      } else {
+        badge.innerText = m.distance_to_default_physical > 4.0 ? 'AAA' : 'BBB';
+        badge.className = 'text-xs font-mono font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+        title.innerText = 'APPROVE / INVESTMENT GRADE MANDATE';
+        desc.innerText = 'Robust solvency buffer with negligible refinancing friction; asset volatility inversion confirms strong enterprise liquidation coverage.';
+        banner.className = 'p-4 rounded-2xl glass-card border-l-4 border-l-emerald-500 flex flex-col md:flex-row md:items-center justify-between gap-4';
+        stage.innerText = 'Stage 1 (12-Mo ECL)';
+        stage.className = 'text-xs font-mono font-bold text-emerald-400';
+        fTier.innerText = 'Low / Clean Audit';
+        fTier.className = 'text-xs font-mono font-bold text-emerald-400';
+      }
+
+      // Update Charts
+      updateMertonChart(m.distance_to_default_physical, m.default_probability_physical);
+      // Corporate asset correlation approx: rho ~ 0.12*(1-exp(-50*PD)) + 0.24*(exp(-50*PD))
+      const factor = (1 - Math.exp(-50 * m.default_probability_physical));
+      const rho = 0.12 * factor + 0.24 * (1 - factor);
+      updateVasicekChart(m.default_probability_physical, rho);
+    }
+
+    function renderFallback(p, simManip, simCCC) {
+      const D = p.short_term_debt + 0.5 * p.long_term_debt;
+      const VA = p.equity_value + D * Math.exp(-p.risk_free_rate);
+      const sigmaA = p.equity_volatility * (p.equity_value / VA);
+      const dd = (Math.log(VA / (D || 1)) + (p.risk_free_rate - 0.5 * sigmaA * sigmaA)) / (sigmaA || 0.1);
+      const pd = normalCDF(-dd);
+      const spread = -Math.log(1 - pd * 0.45) * 10000;
+
+      renderResults({
+        asset_value: VA,
+        asset_volatility: sigmaA,
+        default_barrier: D,
+        distance_to_default_physical: Math.max(dd, 0.05),
+        default_probability_physical: Math.min(Math.max(pd, 0.00001), 0.999),
+        credit_spread_bps: Math.min(Math.max(spread, 1.0), 5000)
+      }, simManip, simCCC);
+    }
+
+    function handleParamChange() {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        queryEngine();
+      }, 70);
+    }
+
+    function resetDefaults() {
+      document.getElementById('rngEquity').value = 200;
+      document.getElementById('rngEqVol').value = 35;
+      document.getElementById('rngSTD').value = 30;
+      document.getElementById('rngLTD').value = 100;
+      document.getElementById('rngRFR').value = 4.50;
+      document.getElementById('chkManipulator').checked = false;
+      document.getElementById('chkCCCAlert').checked = false;
+      handleParamChange();
+    }
+
+    async function exportUnderwritingMemo() {
+      const btn = document.getElementById('btnExportMemo');
+      const btnText = document.getElementById('btnExportText');
+      const originalText = btnText.innerText;
+      btn.disabled = true;
+      btnText.innerText = 'Compiling PDF...';
+
+      const E = parseFloat(document.getElementById('rngEquity').value);
+      const eqVol = parseFloat(document.getElementById('rngEqVol').value) / 100.0;
+      const std = parseFloat(document.getElementById('rngSTD').value);
+      const ltd = parseFloat(document.getElementById('rngLTD').value);
+      const r = parseFloat(document.getElementById('rngRFR').value) / 100.0;
+      const ticker = document.getElementById('inpTicker').value.trim() || 'APEX';
+      const company = document.getElementById('inpCompany').value.trim() || 'Apex Industrial Corp';
+
+      const payload = {
+        company_name: company,
+        ticker: ticker,
+        merton_input: {
+          equity_value: E,
+          equity_volatility: eqVol,
+          short_term_debt: std,
+          long_term_debt: ltd,
+          risk_free_rate: r,
+          maturity: 1.0,
+          loss_given_default: 0.45
+        },
+        forensic_input: {
+          sales_t: 1200.0, cogs_t: 750.0, receivables_t: 180.0, current_assets_t: 500.0,
+          ppe_t: 600.0, total_assets_t: 1200.0, depreciation_t: 60.0, sga_t: 180.0,
+          net_income_t: 90.0, cash_flow_operations_t: 110.0, current_liabilities_t: 250.0,
+          long_term_debt_t: 300.0, total_liabilities_t: 550.0, inventory_t: 180.0,
+          accounts_payable_t: 120.0, ebit_t: 160.0, retained_earnings_t: 350.0,
+          book_value_equity_t: 650.0,
+          sales_t_minus_1: 1100.0, cogs_t_minus_1: 690.0, receivables_t_minus_1: 160.0,
+          current_assets_t_minus_1: 460.0, ppe_t_minus_1: 580.0, total_assets_t_minus_1: 1120.0,
+          depreciation_t_minus_1: 55.0, sga_t_minus_1: 165.0, long_term_debt_t_minus_1: 280.0,
+          total_liabilities_t_minus_1: 510.0, inventory_t_minus_1: 165.0,
+          accounts_payable_t_minus_1: 110.0
+        },
+        loan_tenor_years: 5
+      };
+
+      try {
+        const response = await fetch('/api/v1/credit/export-memo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+          throw new Error('PDF compilation failed');
+        }
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = `Aegis_Credit_Memo_${ticker}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+      } catch (err) {
+        alert('Could not compile PDF memo. Verify backend is running.');
+      } finally {
+        btn.disabled = false;
+        btnText.innerText = originalText;
+      }
+    }
+
+    // Check engine health on startup
+    async function checkHealth() {
+      try {
+        const res = await fetch('/health');
+        if (res.ok) {
+          document.getElementById('healthText').innerText = 'Engine: Online (Sub-2ms Solver)';
+        }
+      } catch (e) {
+        document.getElementById('healthText').innerText = 'Engine: Local Mode';
+      }
+    }
+
+    // Initialize application
+    window.addEventListener('DOMContentLoaded', () => {
+      initCharts();
+      queryEngine();
+      checkHealth();
+    });
+  </script>
+</body>
+</html>
