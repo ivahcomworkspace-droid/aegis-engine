@@ -1,7 +1,9 @@
 from .credit_models import (
     MertonInput,
     MertonOutput,
+    MertonAnalysisRequest,
     ForensicInput,
+    ForensicAnalysisRequest,
     BeneishResult,
     AltmanResult,
     CCCResult,
@@ -18,7 +20,9 @@ from .credit_models import (
 __all__ = [
     "MertonInput",
     "MertonOutput",
+    "MertonAnalysisRequest",
     "ForensicInput",
+    "ForensicAnalysisRequest",
     "BeneishResult",
     "AltmanResult",
     "CCCResult",

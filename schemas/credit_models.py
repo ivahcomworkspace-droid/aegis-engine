@@ -1,10 +1,10 @@
 """
-Aegis Credit Models & Pydantic v2 Schemas
-Institutional balance sheet, structural Merton, forensics, and IFRS 9/CECL data contracts.
+Aegis Perimeter Defense: Pydantic v2 Strict Validation Models.
+Enforces double-entry balance sheet identities, volatility bounds, and physical constraints.
 """
 
-from typing import List, Dict, Optional, Any
-from pydantic import BaseModel, Field, field_validator, model_validator
+from typing import Optional, List, Dict, Any
+from pydantic import BaseModel, Field, model_validator
 
 
 class MertonInput(BaseModel):
@@ -12,12 +12,12 @@ class MertonInput(BaseModel):
     Observable inputs required for Merton structural credit model inversion.
     """
     equity_value: float = Field(..., gt=0, description="Observable market capitalization / equity value (E)")
-    equity_volatility: float = Field(..., gt=0, description="Annualized equity volatility (sigma_E), e.g. 0.40")
+    equity_volatility: float = Field(..., gt=0.005, le=5.0, description="Annualized equity volatility (sigma_E), e.g. 0.40")
     short_term_debt: float = Field(..., ge=0, description="Short-term debt / debt due within 1 year")
     long_term_debt: float = Field(..., ge=0, description="Long-term debt principal")
-    risk_free_rate: float = Field(..., description="Annualized continuously compounded risk-free rate (r), e.g. 0.045")
-    drift_mu: Optional[float] = Field(default=None, description="Physical asset drift mu_A. Defaults to r if None")
-    maturity: float = Field(default=1.0, gt=0, description="Debt maturity / evaluation horizon T in years")
+    risk_free_rate: float = Field(0.045, ge=0.0, le=0.25, description="Annualized continuously compounded risk-free rate (r)")
+    drift_mu: Optional[float] = Field(default=None, ge=-0.50, le=1.00, description="Physical asset drift mu_A. Defaults to r if None")
+    maturity: float = Field(default=1.0, gt=0.0, le=30.0, description="Debt maturity / evaluation horizon T in years")
     loss_given_default: float = Field(default=0.45, ge=0.0, le=1.0, description="Loss Given Default (LGD) [0, 1]")
 
     @property
@@ -44,6 +44,65 @@ class MertonOutput(BaseModel):
     solver_message: str = Field(..., description="Solver exit flag / diagnostics")
     solver_time_ms: float = Field(..., description="Wall-clock solver time in milliseconds")
     leverage_ratio: float = Field(..., description="Debt barrier to Asset value ratio (D / V_A)")
+
+
+class MertonAnalysisRequest(BaseModel):
+    equity_market_cap: float = Field(..., gt=0.0, description="Observable market capitalization ($M)")
+    equity_volatility: float = Field(..., gt=0.005, le=5.0, description="Annualized historical equity volatility")
+    short_term_debt: float = Field(..., ge=0.0, description="Debt due within 12 months ($M)")
+    long_term_debt: float = Field(..., ge=0.0, description="Contractual debt maturing >12 months ($M)")
+    risk_free_rate: float = Field(0.045, ge=0.0, le=0.25, description="Continuous risk-free sovereign yield")
+    asset_drift_mu: float = Field(0.075, ge=-0.50, le=1.00, description="Expected real-world asset growth drift")
+    maturity_years: float = Field(1.0, gt=0.0, le=30.0, description="Option maturity / debt horizon (years)")
+    recovery_rate: float = Field(0.40, ge=0.0, le=1.0, description="Senior unsecured recovery expectation")
+
+
+class ForensicAnalysisRequest(BaseModel):
+    # Comparative Income Statement & Balance Sheet Line Items
+    sales_t0: float = Field(..., gt=0.0)
+    sales_t1: float = Field(..., gt=0.0)
+    cogs_t0: float = Field(..., ge=0.0)
+    cogs_t1: float = Field(..., ge=0.0)
+    receivables_t0: float = Field(..., ge=0.0)
+    receivables_t1: float = Field(..., ge=0.0)
+    current_assets_t0: float = Field(..., gt=0.0)
+    current_assets_t1: float = Field(..., gt=0.0)
+    ppe_t0: float = Field(..., ge=0.0)
+    ppe_t1: float = Field(..., ge=0.0)
+    securities_t0: float = Field(0.0, ge=0.0)
+    securities_t1: float = Field(0.0, ge=0.0)
+    total_assets_t0: float = Field(..., gt=0.0)
+    total_assets_t1: float = Field(..., gt=0.0)
+    depreciation_t0: float = Field(..., ge=0.0)
+    depreciation_t1: float = Field(..., ge=0.0)
+    sga_t0: float = Field(..., ge=0.0)
+    sga_t1: float = Field(..., ge=0.0)
+    net_income_t0: float = Field(...)
+    operating_cash_flow_t0: float = Field(...)
+    total_debt_t0: float = Field(..., ge=0.0)
+    total_debt_t1: float = Field(..., ge=0.0)
+    working_capital_t0: float = Field(...)
+    retained_earnings_t0: float = Field(...)
+    ebit_t0: float = Field(...)
+    book_value_equity_t0: float = Field(...)
+    total_liabilities_t0: float = Field(..., gt=0.0)
+    inventory_t0: float = Field(0.0, ge=0.0)
+    inventory_t1: float = Field(0.0, ge=0.0)
+    payables_t0: float = Field(0.0, ge=0.0)
+    payables_t1: float = Field(0.0, ge=0.0)
+
+    @model_validator(mode='after')
+    def validate_double_entry_reconciliation(self):
+        implied_equity = self.total_assets_t0 - self.total_liabilities_t0
+        tolerance = 0.05 * self.total_assets_t0
+        if abs(implied_equity - self.book_value_equity_t0) > tolerance:
+            raise ValueError(
+                f"Double-Entry Identity Violation: Total Assets ({self.total_assets_t0}) - "
+                f"Total Liabilities ({self.total_liabilities_t0}) = {implied_equity:.2f}, "
+                f"which does not reconcile with Book Equity ({self.book_value_equity_t0}) "
+                f"within 5% tolerance."
+            )
+        return self
 
 
 class ForensicInput(BaseModel):
@@ -93,7 +152,6 @@ class ForensicInput(BaseModel):
         if self.working_capital_t is None:
             self.working_capital_t = self.current_assets_t - self.current_liabilities_t
 
-        # Accounting identity integrity check
         if self.current_assets_t > self.total_assets_t * 1.05:
             raise ValueError(
                 f"Current assets ({self.current_assets_t}) exceeds total assets ({self.total_assets_t})"
@@ -217,17 +275,89 @@ class ECLResult(BaseModel):
 
 
 class ComprehensiveCreditRequest(BaseModel):
-    company_name: str = Field(..., description="Borrower or corporate entity name")
-    ticker: Optional[str] = Field(default=None, description="Equity ticker symbol if public")
-    merton_input: MertonInput
-    forensic_input: ForensicInput
-    origination_distance_to_default: Optional[float] = Field(
-        default=None,
-        description="Historical DD at debt origination for IFRS 9 staging comparison. Defaults to current DD + 1.2 if None"
-    )
+    ticker: str = Field(..., min_length=1, max_length=12)
+    company_name: str = Field(...)
+    
+    # Merton Inputs
+    equity_market_cap: float = Field(..., gt=0.0, description="Observable market capitalization ($M)")
+    equity_volatility: float = Field(..., gt=0.005, le=5.0, description="Annualized equity volatility")
+    short_term_debt: float = Field(..., ge=0.0, description="Debt due within 12 months ($M)")
+    long_term_debt: float = Field(..., ge=0.0, description="Debt maturing >12 months ($M)")
+    risk_free_rate: float = Field(0.045, ge=0.0, le=0.25, description="Continuous risk-free sovereign yield")
+    asset_drift_mu: float = Field(0.075, ge=-0.50, le=1.00, description="Expected real-world asset growth drift")
+    loan_exposure: float = Field(100.0, gt=0.0, description="Total loan or facility exposure amount ($M)")
+    recovery_rate: float = Field(0.40, ge=0.0, le=1.0, description="Senior unsecured recovery expectation")
+    maturity_years: float = Field(1.0, gt=0.0, le=10.0, description="Option maturity / debt horizon (years)")
+
+    # Simplified Balance Sheet for In-Flight Underwriting
+    total_assets: float = Field(..., gt=0.0, description="Total balance sheet enterprise assets ($M)")
+    total_liabilities: float = Field(..., gt=0.0, description="Total liabilities ($M)")
+    book_value_equity: float = Field(..., description="Reported book value of equity ($M)")
+    working_capital: float = Field(..., description="Net working capital ($M)")
+    retained_earnings: float = Field(..., description="Accumulated retained earnings ($M)")
+    ebit: float = Field(..., description="Earnings before interest and taxes ($M)")
+
+    # Working Capital Ratios
+    receivables: float = Field(50.0, ge=0.0)
+    inventory: float = Field(60.0, ge=0.0)
+    payables: float = Field(45.0, ge=0.0)
+    revenue: float = Field(350.0, gt=0.0)
+    cogs: float = Field(240.0, gt=0.0)
+
+    # Forensic & Stress Simulation Flags
+    simulate_beneish_manipulation: bool = Field(False)
+    simulate_working_capital_stress: bool = Field(False)
+
+    # Optional nested wrappers for backward compatibility
+    merton_input: Optional[MertonInput] = Field(default=None)
+    forensic_input: Optional[ForensicInput] = Field(default=None)
+    origination_distance_to_default: Optional[float] = Field(default=None)
     days_past_due: int = Field(default=0, ge=0)
     effective_interest_rate: float = Field(default=0.06, ge=0.0)
     loan_tenor_years: int = Field(default=5, ge=1, le=30)
+
+    @model_validator(mode='before')
+    @classmethod
+    def populate_from_nested(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            m_in = data.get("merton_input")
+            f_in = data.get("forensic_input")
+            if m_in and isinstance(m_in, dict):
+                data.setdefault("equity_market_cap", m_in.get("equity_value"))
+                data.setdefault("equity_volatility", m_in.get("equity_volatility"))
+                data.setdefault("short_term_debt", m_in.get("short_term_debt"))
+                data.setdefault("long_term_debt", m_in.get("long_term_debt"))
+                data.setdefault("risk_free_rate", m_in.get("risk_free_rate", 0.045))
+                data.setdefault("maturity_years", m_in.get("maturity", 1.0))
+                data.setdefault("recovery_rate", 1.0 - m_in.get("loss_given_default", 0.45))
+                data.setdefault("loan_exposure", float(m_in.get("short_term_debt", 0.0)) + float(m_in.get("long_term_debt", 100.0)))
+            if f_in and isinstance(f_in, dict):
+                data.setdefault("total_assets", f_in.get("total_assets_t"))
+                data.setdefault("total_liabilities", f_in.get("total_liabilities_t"))
+                data.setdefault("book_value_equity", f_in.get("book_value_equity_t"))
+                wc = f_in.get("working_capital_t")
+                if wc is None and "current_assets_t" in f_in and "current_liabilities_t" in f_in:
+                    wc = float(f_in.get("current_assets_t", 0.0)) - float(f_in.get("current_liabilities_t", 0.0))
+                data.setdefault("working_capital", wc if wc is not None else 100.0)
+                data.setdefault("retained_earnings", f_in.get("retained_earnings_t", 100.0))
+                data.setdefault("ebit", f_in.get("ebit_t", 50.0))
+                data.setdefault("receivables", f_in.get("receivables_t", 50.0))
+                data.setdefault("inventory", f_in.get("inventory_t", 60.0))
+                data.setdefault("payables", f_in.get("accounts_payable_t", 45.0))
+                data.setdefault("revenue", f_in.get("sales_t", 350.0))
+                data.setdefault("cogs", f_in.get("cogs_t", 240.0))
+        return data
+
+    @model_validator(mode='after')
+    def validate_balance_sheet(self):
+        implied_equity = self.total_assets - self.total_liabilities
+        tolerance = 0.05 * self.total_assets
+        if abs(implied_equity - self.book_value_equity) > tolerance:
+            raise ValueError(
+                f"Accounting Identity Failure: Assets ({self.total_assets}) - "
+                f"Liabilities ({self.total_liabilities}) != Book Equity ({self.book_value_equity})"
+            )
+        return self
 
 
 class ComprehensiveCreditAssessment(BaseModel):

@@ -418,6 +418,7 @@
     let mertonChartInstance = null;
     let vasicekChartInstance = null;
     let debounceTimer = null;
+    let activeAbortController = null;
 
     // Standard Normal CDF approximation
     function normalCDF(x) {
@@ -606,6 +607,12 @@
     }
 
     async function queryEngine() {
+      if (activeAbortController) {
+        activeAbortController.abort();
+      }
+      activeAbortController = new AbortController();
+      const signal = activeAbortController.signal;
+
       const E = parseFloat(document.getElementById('rngEquity').value);
       const eqVol = parseFloat(document.getElementById('rngEqVol').value) / 100.0;
       const std = parseFloat(document.getElementById('rngSTD').value);
@@ -637,7 +644,8 @@
         const response = await fetch('/api/v1/merton/solve', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
+          body: JSON.stringify(payload),
+          signal: signal
         });
 
         if (response.ok) {
@@ -648,6 +656,7 @@
           renderFallback(payload, simManip, simCCC);
         }
       } catch (err) {
+        if (err.name === 'AbortError') return;
         renderFallback(payload, simManip, simCCC);
       }
     }

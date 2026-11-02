@@ -2,7 +2,7 @@
 
 [![Live Web Terminal](https://img.shields.io/badge/Live%20Demo-Render-00c7b7?style=for-the-badge&logo=render&logoColor=white)](https://aegis-engine-s96v.onrender.com)
 [![OpenAPI Docs](https://img.shields.io/badge/API%20Docs-FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://aegis-engine-s96v.onrender.com/docs)
-[![Pytest Suite](https://img.shields.io/badge/Tests-40%20Passed-brightgreen?style=for-the-badge)](tests/test_engine.py)
+[![Pytest Suite](https://img.shields.io/badge/Tests-55%20Passed-brightgreen?style=for-the-badge)](tests/test_engine.py)
 
 > **Live Production Terminal:** [https://aegis-engine-s96v.onrender.com](https://aegis-engine-s96v.onrender.com)  
 > **Interactive Swagger API:** [https://aegis-engine-s96v.onrender.com/docs](https://aegis-engine-s96v.onrender.com/docs)

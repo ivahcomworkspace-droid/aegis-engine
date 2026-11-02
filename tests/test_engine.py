@@ -18,7 +18,9 @@ try:
     from aegis_engine.schemas.credit_models import (
         MertonInput,
         MertonOutput,
+        MertonAnalysisRequest,
         ForensicInput,
+        ForensicAnalysisRequest,
         VasicekInput,
         IFRS9StageInput,
         ComprehensiveCreditRequest,
@@ -56,7 +58,9 @@ except ModuleNotFoundError:
     from schemas.credit_models import (
         MertonInput,
         MertonOutput,
+        MertonAnalysisRequest,
         ForensicInput,
+        ForensicAnalysisRequest,
         VasicekInput,
         IFRS9StageInput,
         ComprehensiveCreditRequest,
@@ -974,6 +978,181 @@ def test_merton_objective_and_jacobian_clamping():
     )
     assert np.all(res == 1e8)
     assert np.all(jac == np.eye(2) * 1e8)
+
+
+def test_schema_balance_sheet_identity_rejection():
+    """Strict Pydantic validator rejects non-reconciling balance sheets beyond 5% tolerance."""
+    # Valid reconciliation: 1000 - 400 = 600
+    req_valid = ComprehensiveCreditRequest(
+        ticker="APEX",
+        company_name="Apex Corp",
+        equity_market_cap=200.0,
+        equity_volatility=0.35,
+        short_term_debt=40.0,
+        long_term_debt=80.0,
+        total_assets=1000.0,
+        total_liabilities=400.0,
+        book_value_equity=600.0,
+        working_capital=150.0,
+        retained_earnings=200.0,
+        ebit=120.0
+    )
+    assert req_valid.total_assets == 1000.0
+
+    # Invalid: 1000 - 400 = 600 != 800 (error = 200 > 50 tolerance)
+    with pytest.raises(ValueError, match="Accounting Identity Failure"):
+        ComprehensiveCreditRequest(
+            ticker="APEX",
+            company_name="Apex Corp",
+            equity_market_cap=200.0,
+            equity_volatility=0.35,
+            short_term_debt=40.0,
+            long_term_debt=80.0,
+            total_assets=1000.0,
+            total_liabilities=400.0,
+            book_value_equity=800.0,
+            working_capital=150.0,
+            retained_earnings=200.0,
+            ebit=120.0
+        )
+
+
+def test_schema_merton_analysis_request_bounds():
+    """Verify perimeter bounds on MertonAnalysisRequest: volatility in [0.005, 5.0], cap > 0."""
+    req = MertonAnalysisRequest(
+        equity_market_cap=150.0,
+        equity_volatility=0.30,
+        short_term_debt=30.0,
+        long_term_debt=60.0
+    )
+    assert req.equity_market_cap == 150.0
+
+    with pytest.raises(ValueError):
+        MertonAnalysisRequest(
+            equity_market_cap=-10.0,  # Invalid: <= 0
+            equity_volatility=0.30,
+            short_term_debt=30.0,
+            long_term_debt=60.0
+        )
+
+    with pytest.raises(ValueError):
+        MertonAnalysisRequest(
+            equity_market_cap=150.0,
+            equity_volatility=0.001,  # Invalid: <= 0.005
+            short_term_debt=30.0,
+            long_term_debt=60.0
+        )
+
+
+def test_schema_forensic_double_entry_reconciliation():
+    """Verify ForensicAnalysisRequest enforces double-entry identity reconciliation."""
+    # Valid: Assets 1000 - Liab 400 = Equity 600
+    req = ForensicAnalysisRequest(
+        sales_t0=1000.0, sales_t1=900.0,
+        cogs_t0=600.0, cogs_t1=550.0,
+        receivables_t0=120.0, receivables_t1=100.0,
+        current_assets_t0=400.0, current_assets_t1=350.0,
+        ppe_t0=500.0, ppe_t1=480.0,
+        total_assets_t0=1000.0, total_assets_t1=950.0,
+        depreciation_t0=40.0, depreciation_t1=38.0,
+        sga_t0=150.0, sga_t1=140.0,
+        net_income_t0=90.0, operating_cash_flow_t0=100.0,
+        total_debt_t0=300.0, total_debt_t1=280.0,
+        working_capital_t0=150.0, retained_earnings_t0=250.0,
+        ebit_t0=140.0, book_value_equity_t0=600.0,
+        total_liabilities_t0=400.0
+    )
+    assert req.total_assets_t0 == 1000.0
+
+    # Imbalanced: Assets 1000 - Liab 400 = 600 != 850
+    with pytest.raises(ValueError, match="Double-Entry Identity Violation"):
+        ForensicAnalysisRequest(
+            sales_t0=1000.0, sales_t1=900.0,
+            cogs_t0=600.0, cogs_t1=550.0,
+            receivables_t0=120.0, receivables_t1=100.0,
+            current_assets_t0=400.0, current_assets_t1=350.0,
+            ppe_t0=500.0, ppe_t1=480.0,
+            total_assets_t0=1000.0, total_assets_t1=950.0,
+            depreciation_t0=40.0, depreciation_t1=38.0,
+            sga_t0=150.0, sga_t1=140.0,
+            net_income_t0=90.0, operating_cash_flow_t0=100.0,
+            total_debt_t0=300.0, total_debt_t1=280.0,
+            working_capital_t0=150.0, retained_earnings_t0=250.0,
+            ebit_t0=140.0, book_value_equity_t0=850.0,  # Imbalanced
+            total_liabilities_t0=400.0
+        )
+
+
+def test_api_merton_analyze_endpoint():
+    """POST /merton/analyze returns 200 with valid MertonOutput."""
+    payload = {
+        "equity_market_cap": 250.0,
+        "equity_volatility": 0.35,
+        "short_term_debt": 40.0,
+        "long_term_debt": 80.0,
+        "risk_free_rate": 0.045
+    }
+    response = client.post("/merton/analyze", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["solver_converged"] is True
+    assert data["distance_to_default_physical"] > 0.0
+
+
+def test_api_comprehensive_assessment_flat_schema():
+    """POST /credit/comprehensive works with flat schema and performs end-to-end evaluation."""
+    payload = {
+        "ticker": "NVDA",
+        "company_name": "Nvidia Corporation",
+        "equity_market_cap": 2000.0,
+        "equity_volatility": 0.45,
+        "short_term_debt": 50.0,
+        "long_term_debt": 100.0,
+        "risk_free_rate": 0.045,
+        "total_assets": 1200.0,
+        "total_liabilities": 400.0,
+        "book_value_equity": 800.0,
+        "working_capital": 300.0,
+        "retained_earnings": 500.0,
+        "ebit": 400.0,
+        "revenue": 1000.0,
+        "cogs": 400.0,
+        "receivables": 150.0,
+        "inventory": 100.0,
+        "payables": 80.0,
+        "loan_exposure": 150.0
+    }
+    response = client.post("/credit/comprehensive", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["company_name"] == "Nvidia Corporation"
+    assert "merton" in data
+    assert "forensics" in data
+    assert "vasicek" in data
+    assert "ifrs9_ecl" in data
+    assert "composite_rating" in data
+
+
+def test_api_comprehensive_assessment_balance_sheet_rejection():
+    """POST /credit/comprehensive rejects requests where balance sheet identity is violated."""
+    payload = {
+        "ticker": "BAD",
+        "company_name": "Imbalanced Corp",
+        "equity_market_cap": 100.0,
+        "equity_volatility": 0.40,
+        "short_term_debt": 50.0,
+        "long_term_debt": 50.0,
+        "total_assets": 1000.0,
+        "total_liabilities": 300.0,
+        "book_value_equity": 900.0,  # 1000 - 300 = 700 != 900
+        "working_capital": 100.0,
+        "retained_earnings": 100.0,
+        "ebit": 50.0
+    }
+    response = client.post("/credit/comprehensive", json=payload)
+    assert response.status_code == 422
+    assert "Accounting Identity Failure" in response.text
+
 
 
 
