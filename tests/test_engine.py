@@ -31,15 +31,19 @@ try:
     )
     from aegis_engine.core.forensics import (
         calculate_beneish,
+        calculate_beneish_m_score,
         calculate_altman_z_double_prime,
         calculate_ccc,
+        calculate_cash_conversion_cycle,
         calculate_forensics,
     )
     from aegis_engine.core.vasicek import (
         calculate_corporate_asset_correlation,
         calculate_vasicek_conditional_pd,
         calculate_vasicek_loss_distribution,
+        calculate_vasicek_capital,
         calculate_vasicek_asrf,
+        calculate_ecl_staging_and_loss,
         calculate_ifrs9_ecl,
     )
     from aegis_engine.services.memo_generator import (
@@ -65,15 +69,19 @@ except ModuleNotFoundError:
     )
     from core.forensics import (
         calculate_beneish,
+        calculate_beneish_m_score,
         calculate_altman_z_double_prime,
         calculate_ccc,
+        calculate_cash_conversion_cycle,
         calculate_forensics,
     )
     from core.vasicek import (
         calculate_corporate_asset_correlation,
         calculate_vasicek_conditional_pd,
         calculate_vasicek_loss_distribution,
+        calculate_vasicek_capital,
         calculate_vasicek_asrf,
+        calculate_ecl_staging_and_loss,
         calculate_ifrs9_ecl,
     )
     from services.memo_generator import (
@@ -383,6 +391,85 @@ def test_unified_forensics_composite_risk(clean_forensic_input, manipulator_fore
     assert manip_res.composite_forensic_risk in ["High", "Critical"]
 
 
+def test_beneish_m_score_raw_numerical():
+    """Verify calculate_beneish_m_score produces correct dict keys, indices, and flags."""
+    res = calculate_beneish_m_score(
+        sales_t=1200.0, sales_prev=1000.0,
+        cogs_t=700.0, cogs_prev=600.0,
+        rec_t=250.0, rec_prev=150.0,
+        ca_t=500.0, ca_prev=450.0,
+        ppe_t=400.0, ppe_prev=400.0,
+        sec_t=50.0, sec_prev=50.0,
+        ta_t=1100.0, ta_prev=1000.0,
+        dep_t=30.0, dep_prev=45.0,
+        sga_t=180.0, sga_prev=140.0,
+        net_income_t=90.0, cfo_t=20.0,
+        total_debt_t=500.0, total_debt_prev=400.0
+    )
+
+    assert "m_score" in res
+    assert "is_manipulator" in res
+    assert res["manipulation_threshold"] == -1.78
+    assert "indices" in res
+    assert "DSRI" in res["indices"]
+    assert "red_flags" in res
+    assert isinstance(res["red_flags"], dict)
+
+
+def test_altman_z_double_prime_raw_numerical_zones():
+    """Verify calculate_altman_z_double_prime with raw floats across SAFE, GREY, and DISTRESS."""
+    # Safe zone (Z'' > 2.60)
+    safe_res = calculate_altman_z_double_prime(
+        working_capital=300.0, retained_earnings=400.0, ebit=200.0,
+        book_value_equity=600.0, total_assets=1000.0, total_liabilities=300.0
+    )
+    assert safe_res["zone"] == "SAFE"
+    assert safe_res["z_double_prime"] > 2.60
+    assert "components" in safe_res
+
+    # Grey zone (1.10 <= Z'' <= 2.60)
+    grey_res = calculate_altman_z_double_prime(
+        working_capital=100.0, retained_earnings=50.0, ebit=50.0,
+        book_value_equity=200.0, total_assets=1000.0, total_liabilities=600.0
+    )
+    assert grey_res["zone"] == "GREY"
+    assert 1.10 <= grey_res["z_double_prime"] <= 2.60
+
+    # Distress zone (Z'' < 1.10)
+    distress_res = calculate_altman_z_double_prime(
+        working_capital=-100.0, retained_earnings=-200.0, ebit=-50.0,
+        book_value_equity=50.0, total_assets=1000.0, total_liabilities=900.0
+    )
+    assert distress_res["zone"] == "DISTRESS"
+    assert distress_res["z_double_prime"] < 1.10
+
+
+def test_altman_z_double_prime_raw_zero_assets_guard():
+    """Verify calculate_altman_z_double_prime raises ValueError when assets/liabilities <= 0."""
+    with pytest.raises(ValueError, match="Total Assets and Total Liabilities must be strictly positive"):
+        calculate_altman_z_double_prime(100.0, 50.0, 50.0, 100.0, total_assets=0.0, total_liabilities=200.0)
+
+    with pytest.raises(ValueError, match="Total Assets and Total Liabilities must be strictly positive"):
+        calculate_altman_z_double_prime(100.0, 50.0, 50.0, 100.0, total_assets=500.0, total_liabilities=-10.0)
+
+
+def test_cash_conversion_cycle_raw_numerical():
+    """Verify calculate_cash_conversion_cycle returns correct DSO, DIO, DPO, and accrual flag."""
+    res = calculate_cash_conversion_cycle(
+        receivables=150.0, inventory=200.0, payables=100.0,
+        sales=1000.0, cogs=600.0,
+        prev_receivables=100.0, prev_inventory=180.0, prev_payables=110.0,
+        prev_sales=1000.0, prev_cogs=600.0
+    )
+    assert abs(res["dso_days"] - 54.75) < 0.1
+    assert abs(res["dio_days"] - 121.67) < 0.1
+    assert abs(res["dpo_days"] - 60.83) < 0.1
+    assert "ccc_days" in res
+    assert "delta_ccc_days" in res
+    assert res["delta_ccc_days"] > 20.0
+    assert res["accrual_divergence_alert"] is True
+
+
 # =====================================================================
 # 3. VASICEK REGULATORY LOSS & IFRS 9 ECL TESTS
 # =====================================================================
@@ -520,6 +607,64 @@ def test_ecl_discounting_and_term_structure():
     assert sched1.discount_factor == pytest.approx(1.0 / (1.0 + eir), rel=1e-3)
     assert sched2.discount_factor == pytest.approx(1.0 / ((1.0 + eir) ** 2), rel=1e-3)
     assert res.total_ecl == pytest.approx(sched1.discounted_ecl + sched2.discounted_ecl, abs=0.1)
+
+
+def test_vasicek_capital_raw_numerical():
+    """Verify calculate_vasicek_capital returns exact dictionary structure and Basel metrics."""
+    res = calculate_vasicek_capital(
+        pit_pd=0.02,
+        lgd=0.40,
+        ead=1_500_000.0,
+        maturity=2.0,
+        confidence_level=0.999
+    )
+
+    assert "pit_pd" in res
+    assert "asset_correlation_rho" in res
+    assert 0.12 <= res["asset_correlation_rho"] <= 0.24
+    assert "regulatory_capital_k" in res
+    assert res["expected_loss"] == pytest.approx(0.02 * 0.40 * 1_500_000.0, abs=1.0)
+    assert res["unexpected_loss"] > 0.0
+    assert "stress_scenarios" in res
+    assert len(res["stress_scenarios"]) == 4
+
+
+def test_ecl_staging_and_loss_raw_numerical():
+    """Verify calculate_ecl_staging_and_loss handles Stage 1, Stage 2 SICR, and Stage 3 with raw dict."""
+    # Stage 1: Stable
+    st1 = calculate_ecl_staging_and_loss(
+        current_pd=0.01,
+        origination_distance_to_default=3.5,
+        current_distance_to_default=3.4,
+        days_past_due=0,
+        ead_schedule=[500_000.0, 500_000.0]
+    )
+    assert st1["assigned_stage"] == 1
+    assert st1["is_lifetime_ecl"] is False
+    assert len(st1["period_schedules"]) == 1
+
+    # Stage 2: SICR via Delta DD < -1.0
+    st2 = calculate_ecl_staging_and_loss(
+        current_pd=0.03,
+        origination_distance_to_default=3.5,
+        current_distance_to_default=2.0,  # Delta DD = -1.5 < -1.0
+        days_past_due=10,
+        ead_schedule=[500_000.0, 500_000.0]
+    )
+    assert st2["assigned_stage"] == 2
+    assert st2["is_lifetime_ecl"] is True
+    assert len(st2["period_schedules"]) == 2
+
+    # Stage 3: Credit Impaired via DPD >= 90
+    st3 = calculate_ecl_staging_and_loss(
+        current_pd=0.15,
+        origination_distance_to_default=3.0,
+        current_distance_to_default=1.0,
+        days_past_due=95,
+        ead_schedule=[500_000.0, 500_000.0]
+    )
+    assert st3["assigned_stage"] == 3
+    assert st3["is_lifetime_ecl"] is True
 
 
 # =====================================================================
