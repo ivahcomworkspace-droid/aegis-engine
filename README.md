@@ -21,15 +21,29 @@
 ## 2. Core Mathematical Specifications
 
 ### A. The Structural Merton Option Engine (`core/merton.py`)
+
 Model corporate equity as a European call option on latent enterprise assets $V_A$ against a debt default barrier $D = \text{Short-Term Debt} + 0.5 \times \text{Long-Term Debt}$ maturing at $T$:
-$$E = V_A \Phi(d_1) - D e^{-r T} \Phi(d_2)$$
-$$d_1 = \frac{\ln(V_A / D) + \left(r + 0.5 \sigma_A^2\right)T}{\sigma_A \sqrt{T}}, \quad d_2 = d_1 - \sigma_A \sqrt{T}$$
+
+$$
+E = V_A \Phi(d_1) - D e^{-r T} \Phi(d_2)
+$$
+
+$$
+d_1 = \frac{\ln(V_A / D) + \left(r + 0.5 \sigma_A^2\right)T}{\sigma_A \sqrt{T}}, \quad d_2 = d_1 - \sigma_A \sqrt{T}
+$$
 
 Link observable equity volatility $\sigma_E$ to unobservable asset volatility $\sigma_A$ using Itô's Lemma:
-$$\sigma_E = \left(\frac{V_A}{E}\right) \Phi(d_1) \sigma_A$$
+
+$$
+\sigma_E = \left(\frac{V_A}{E}\right) \Phi(d_1) \sigma_A
+$$
 
 Solve this coupled 2D non-linear system numerically using SciPy's modified Powell hybrid method (`scipy.optimize.root(..., method='hybr')`) with an exact analytical Jacobian matrix $\mathbf{J}$ for sub-2ms convergence:
-$$\mathbf{J} = \begin{bmatrix} \frac{\partial F_1}{\partial V_A} & \frac{\partial F_1}{\partial \sigma_A} \\ \frac{\partial F_2}{\partial V_A} & \frac{\partial F_2}{\partial \sigma_A} \end{bmatrix}$$
+
+$$
+\mathbf{J} = \begin{bmatrix} \frac{\partial F_1}{\partial V_A} & \frac{\partial F_1}{\partial \sigma_A} \\ \frac{\partial F_2}{\partial V_A} & \frac{\partial F_2}{\partial \sigma_A} \end{bmatrix}
+$$
+
 Where:
 - $\frac{\partial F_1}{\partial V_A} = \Phi(d_1)$
 - $\frac{\partial F_1}{\partial \sigma_A} = V_A \sqrt{T} \phi(d_1)$
@@ -37,32 +51,74 @@ Where:
 - $\frac{\partial F_2}{\partial \sigma_A} = \frac{V_A}{E} \left[ \Phi(d_1) + \sigma_A \phi(d_1) \left( 0.5\sqrt{T} - \frac{\ln(V_A/D) + r T}{\sigma_A^2 \sqrt{T}} \right) \right]$
 
 **Derived Solvency Metrics:**
-- **Physical Distance-to-Default:** $\text{DD} = \frac{\ln(V_A / D) + (\mu_A - 0.5\sigma_A^2)T}{\sigma_A \sqrt{T}}$, with $\text{PD}_{\text{physical}} = \Phi(-\text{DD})$.
-- **Risk-Neutral Implied Spread:** $\text{DD}_{\text{RN}} = \frac{\ln(V_A / D) + (r - 0.5\sigma_A^2)T}{\sigma_A \sqrt{T}}$, with $\text{Spread (bps)} = -\frac{\ln(1 - \text{PD}_{\text{RN}} \times \text{LGD})}{T} \times 10{,}000$.
+- **Physical Distance-to-Default:**
+
+$$
+\text{DD}_{\text{physical}} = \frac{\ln(V_A / D) + (\mu_A - 0.5\sigma_A^2)T}{\sigma_A \sqrt{T}}, \quad \text{PD}_{\text{physical}} = \Phi(-\text{DD})
+$$
+
+- **Risk-Neutral Implied Spread:**
+
+$$
+\text{DD}_{\text{RN}} = \frac{\ln(V_A / D) + (r - 0.5\sigma_A^2)T}{\sigma_A \sqrt{T}}
+$$
+
+$$
+\text{Spread (bps)} = -\frac{\ln(1 - \text{PD}_{\text{RN}} \times \text{LGD})}{T} \times 10{,}000
+$$
+
 - **Asymptotic Clamp:** If $D = 0 \implies V_A = E$, $\sigma_A = \sigma_E$, $\text{DD} = 99.0$, $\text{PD} = 0.0$, $\text{Spread} = 0.0\text{ bps}$.
 
 ---
 
 ### B. Balance Sheet Forensics (`core/forensics.py`)
+
 1. **8-Factor Beneish M-Score:**
-   $$\text{M} = -4.84 + 0.920\text{DSRI} + 0.528\text{GMI} + 0.404\text{AQI} + 0.892\text{SGI} + 0.115\text{DEPI} - 0.172\text{SGAI} + 4.037\text{TATA} + 0.0327\text{LVGI}$$
+
+$$
+\text{M} = -4.84 + 0.920\text{DSRI} + 0.528\text{GMI} + 0.404\text{AQI} + 0.892\text{SGI} + 0.115\text{DEPI} - 0.172\text{SGAI} + 4.037\text{TATA} + 0.0327\text{LVGI}
+$$
+
    - Active manipulation threshold: $\text{M-Score} > -1.78$.
+
 2. **Altman $Z''$-Score (Services & Emerging Markets):**
-   $$Z'' = 6.56 X_1 + 3.26 X_2 + 6.72 X_3 + 1.05 X_4$$
+
+$$
+Z'' = 6.56 X_1 + 3.26 X_2 + 6.72 X_3 + 1.05 X_4
+$$
+
    - Solvency zones: Safe ($Z'' > 2.60$), Grey ($1.10 \le Z'' \le 2.60$), Distress ($Z'' < 1.10$).
+
 3. **Cash Conversion Cycle (CCC):**
-   $$\text{CCC} = \text{DSO} + \text{DIO} - \text{DPO}$$
+
+$$
+\text{CCC} = \text{DSO} + \text{DIO} - \text{DPO}
+$$
+
    - Alert triggered when $\Delta\text{CCC} > +20\text{ days}$ while gross margin is static ($|\Delta\text{GM}| \le 0.02$).
 
 ---
 
 ### C. Regulatory Loss Distribution & Stress Testing (`core/vasicek.py`)
+
 1. **Vasicek ASRF Conditional Distribution:**
-   $$\text{PD}_{\text{conditional}}(Z) = \Phi\left( \frac{\Phi^{-1}(\text{PD}_{\text{PIT}}) + \sqrt{\rho} \cdot Z}{\sqrt{1 - \rho}} \right)$$
+
+$$
+\text{PD}_{\text{conditional}}(Z) = \Phi\left( \frac{\Phi^{-1}(\text{PD}_{\text{PIT}}) + \sqrt{\rho} \cdot Z}{\sqrt{1 - \rho}} \right)
+$$
+
    Where corporate asset correlation $\rho$ follows the Basel corporate specification:
-   $$\rho = 0.12 \left(\frac{1 - e^{-50 \cdot \text{PD}}}{1 - e^{-50}}\right) + 0.24 \left(1 - \frac{1 - e^{-50 \cdot \text{PD}}}{1 - e^{-50}}\right), \quad \rho \in [0.12, 0.24]$$
+
+$$
+\rho = 0.12 \left(\frac{1 - e^{-50 \cdot \text{PD}}}{1 - e^{-50}}\right) + 0.24 \left(1 - \frac{1 - e^{-50 \cdot \text{PD}}}{1 - e^{-50}}\right), \quad \rho \in [0.12, 0.24]
+$$
+
 2. **Multi-Period Lifetime Expected Credit Loss (ECL):**
-   $$\text{ECL} = \sum_{t=1}^T \frac{\text{PD}_t^* \times \text{LGD}_t \times \text{EAD}_t}{(1 + \text{EIR})^t}$$
+
+$$
+\text{ECL} = \sum_{t=1}^T \frac{\text{PD}_t^* \times \text{LGD}_t \times \text{EAD}_t}{(1 + \text{EIR})^t}
+$$
+
    - **Stage 1 (Performing):** 12-Month ECL ($T = 1$).
    - **Stage 2 (Underperforming / SICR):** Lifetime ECL triggered when $\Delta\text{DD} < -1.0\sigma$ or $\text{DPD} \in [30, 89]$.
    - **Stage 3 (Credit Impaired):** Lifetime ECL with workout LGD on $\text{DPD} \ge 90$ or default flag.
