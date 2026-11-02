@@ -18,11 +18,67 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
 try:
-    from aegis_engine.schemas.credit_models import ComprehensiveCreditAssessment
-    from aegis_engine.core.vasicek import calculate_vasicek_loss_distribution
+    from aegis_engine.schemas.credit_models import (
+        ComprehensiveCreditAssessment,
+        IFRS9StageInput,
+    )
+    from aegis_engine.core.vasicek import (
+        calculate_vasicek_loss_distribution,
+        calculate_ifrs9_ecl,
+    )
 except ModuleNotFoundError:
-    from schemas.credit_models import ComprehensiveCreditAssessment
-    from core.vasicek import calculate_vasicek_loss_distribution
+    from schemas.credit_models import (
+        ComprehensiveCreditAssessment,
+        IFRS9StageInput,
+    )
+    from core.vasicek import (
+        calculate_vasicek_loss_distribution,
+        calculate_ifrs9_ecl,
+    )
+
+
+def _reconcile_assessment(assessment: ComprehensiveCreditAssessment) -> Tuple[ComprehensiveCreditAssessment, str]:
+    """
+    Reconciles underwriting directive banner, SICR trigger thresholds,
+    and multi-period IFRS 9 ECL amortization schedules.
+    """
+    m = assessment.merton
+    ecl = assessment.ifrs9_ecl
+    dd = m.distance_to_default_physical
+
+    # 1. Align SICR watch (DD < 2.0 sigma): ensure multi-year Stage 2 lifetime schedule
+    if dd < 2.0:
+        if (ecl.assigned_stage == 1 or len(ecl.period_schedules) <= 1 or not ecl.is_lifetime_ecl) and ecl.assigned_stage != 3:
+            pit_pd = max(min(m.default_probability_physical, 0.999), 0.0001)
+            initial_ead = ecl.period_schedules[0].ead if ecl.period_schedules else max(m.default_barrier * 1.25, 1_000_000.0)
+            tenor = 5
+            ead_schedule = [initial_ead * ((tenor - i) / tenor) for i in range(tenor)]
+
+            recomputed_ecl = calculate_ifrs9_ecl(
+                IFRS9StageInput(
+                    current_distance_to_default=dd,
+                    origination_distance_to_default=dd + 1.5,
+                    current_pd=pit_pd,
+                    days_past_due=30,
+                    is_credit_impaired=False,
+                    ead_schedule=ead_schedule,
+                    effective_interest_rate=0.06,
+                )
+            )
+            assessment = assessment.model_copy(update={"ifrs9_ecl": recomputed_ecl})
+            ecl = recomputed_ecl
+
+    # 2. Align directive text: if Stage 1 is selected, adjust directive banner to state "PRIME / STABLE QUALITY"
+    if ecl.assigned_stage == 1:
+        rec_directive = "PRIME / STABLE QUALITY"
+    elif ecl.assigned_stage == 3:
+        rec_directive = assessment.recommendation
+    elif dd < 2.0 or ecl.assigned_stage == 2:
+        rec_directive = "MONITOR CLOSELY: Significant increase in credit risk (SICR) observed; quarterly debt covenants required."
+    else:
+        rec_directive = assessment.recommendation
+
+    return assessment, rec_directive
 
 
 def generate_credit_charts(assessment: ComprehensiveCreditAssessment) -> Dict[str, bytes]:
@@ -33,6 +89,7 @@ def generate_credit_charts(assessment: ComprehensiveCreditAssessment) -> Dict[st
     3. Vasicek Macro Loss Distribution & IFRS 9 ECL Staging.
     Returns dictionary mapping chart names to PNG byte streams.
     """
+    assessment, _ = _reconcile_assessment(assessment)
     charts: Dict[str, bytes] = {}
 
     plt.style.use('fast')
@@ -207,6 +264,7 @@ def generate_credit_memo_html(assessment: ComprehensiveCreditAssessment) -> str:
     """
     Renders institutional HTML memorandum for web viewing or WeasyPrint compilation.
     """
+    assessment, rec_directive = _reconcile_assessment(assessment)
     charts = generate_credit_charts(assessment)
     merton_b64 = base64.b64encode(charts['merton_profile']).decode('utf-8')
     forensics_b64 = base64.b64encode(charts['forensics_scorecard']).decode('utf-8')
@@ -216,6 +274,7 @@ def generate_credit_memo_html(assessment: ComprehensiveCreditAssessment) -> str:
     f = assessment.forensics
     v = assessment.vasicek
     ecl = assessment.ifrs9_ecl
+    stage_badge = f"Stage {ecl.assigned_stage}"
 
     rating_color = "#059669" if assessment.composite_rating in ["AAA", "AA", "A", "BBB"] else "#dc2626"
     stage_color = "#059669" if ecl.assigned_stage == 1 else ("#d97706" if ecl.assigned_stage == 2 else "#dc2626")
@@ -391,7 +450,7 @@ def generate_credit_memo_html(assessment: ComprehensiveCreditAssessment) -> str:
   </div>
   <div class="meta-cell">
     <strong>IFRS 9 Staging</strong>
-    <span style="color: {stage_color};">{ecl.stage_name.split(' ')[0]}</span>
+    <span style="color: {stage_color};">{stage_badge}</span>
   </div>
   <div class="meta-cell">
     <strong>Total ECL Allowance</strong>
@@ -401,7 +460,7 @@ def generate_credit_memo_html(assessment: ComprehensiveCreditAssessment) -> str:
 
 <div class="recommendation-box">
   <strong style="color: #1e3a8a; text-transform: uppercase; font-size: 8.5pt;">Underwriting Committee Directive</strong>
-  <div style="font-size: 10pt; font-weight: 700; margin-top: 2px; color: #0f172a;">{assessment.recommendation}</div>
+  <div style="font-size: 10pt; font-weight: 700; margin-top: 2px; color: #0f172a;">{rec_directive}</div>
   <p style="margin: 4px 0 0 0; font-size: 8.5pt; color: #334155;">{assessment.executive_summary}</p>
 </div>
 
@@ -508,6 +567,7 @@ def generate_credit_memo_pdf_reportlab(assessment: ComprehensiveCreditAssessment
     Institutional PDF compiler using ReportLab with embedded vector styling and Matplotlib charts.
     Ensures 100% deterministic compilation across all platforms without native Cairo dependencies.
     """
+    assessment, rec_directive = _reconcile_assessment(assessment)
     from reportlab.lib.pagesizes import letter
     from reportlab.lib import colors
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, PageBreak
@@ -575,12 +635,13 @@ def generate_credit_memo_pdf_reportlab(assessment: ComprehensiveCreditAssessment
     f = assessment.forensics
     v = assessment.vasicek
     ecl = assessment.ifrs9_ecl
+    stage_badge = f"Stage {ecl.assigned_stage}"
 
     meta_data = [
         [
             Paragraph("<b>Borrower:</b> " + assessment.company_name, body_style),
             Paragraph("<b>Rating:</b> " + assessment.composite_rating, body_style),
-            Paragraph("<b>IFRS 9:</b> " + ecl.stage_name.split(' ')[0], body_style),
+            Paragraph(f"<b>IFRS 9:</b> {stage_badge}", body_style),
             Paragraph(f"<b>Total ECL:</b> ${ecl.total_ecl:,.0f}", body_style)
         ]
     ]
@@ -594,7 +655,7 @@ def generate_credit_memo_pdf_reportlab(assessment: ComprehensiveCreditAssessment
     story.append(Spacer(1, 10))
 
     # Committee Directive
-    rec_text = f"<b>Underwriting Directive:</b> {assessment.recommendation}<br/>{assessment.executive_summary}"
+    rec_text = f"<b>Underwriting Directive:</b> {rec_directive}<br/>{assessment.executive_summary}"
     rec_data = [[Paragraph(rec_text, body_style)]]
     rec_table = Table(rec_data, colWidths=[7.0*inch])
     rec_table.setStyle(TableStyle([
