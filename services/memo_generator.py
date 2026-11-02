@@ -40,9 +40,10 @@ except ModuleNotFoundError:
 def _reconcile_assessment(assessment: ComprehensiveCreditAssessment) -> Tuple[ComprehensiveCreditAssessment, str]:
     """
     Reconciles underwriting directive banner, SICR trigger thresholds,
-    and multi-period IFRS 9 ECL amortization schedules.
+    multi-period IFRS 9 ECL amortization schedules, and dynamic executive narrative.
     """
     m = assessment.merton
+    f = assessment.forensics
     ecl = assessment.ifrs9_ecl
     dd = m.distance_to_default_physical
 
@@ -65,7 +66,6 @@ def _reconcile_assessment(assessment: ComprehensiveCreditAssessment) -> Tuple[Co
                     effective_interest_rate=0.06,
                 )
             )
-            assessment = assessment.model_copy(update={"ifrs9_ecl": recomputed_ecl})
             ecl = recomputed_ecl
 
     # 2. Align directive text: if Stage 1 is selected, adjust directive banner to state "PRIME / STABLE QUALITY"
@@ -77,6 +77,28 @@ def _reconcile_assessment(assessment: ComprehensiveCreditAssessment) -> Tuple[Co
         rec_directive = "MONITOR CLOSELY: Significant increase in credit risk (SICR) observed; quarterly debt covenants required."
     else:
         rec_directive = assessment.recommendation
+
+    # 3. Dynamic Narrative Reconciler: prevent stale Stage 1 narrative when borrower is Stage 2
+    total_ecl = ecl.total_ecl
+    ecl_pct = ecl.ecl_percentage_of_ead
+    if ecl.assigned_stage == 2:
+        stage_desc = f"Classified under IFRS 9 as Stage 2 (Underperforming - SICR) with lifetime ECL allowance of ${total_ecl:,.0f} ({ecl_pct:.2f}%)."
+    elif ecl.assigned_stage == 1:
+        stage_desc = f"Classified under IFRS 9 as Stage 1 (Performing - 12-Month ECL) with 12-month ECL allowance of ${total_ecl:,.0f} ({ecl_pct:.2f}%)."
+    else:
+        stage_desc = f"Classified under IFRS 9 as Stage 3 (Credit-Impaired) with lifetime ECL allowance of ${total_ecl:,.0f} ({ecl_pct:.2f}%)."
+
+    reconciled_summary = (
+        f"Borrower exhibits physical Distance-to-Default of {dd:.2f}σ (PD: {m.default_probability_physical:.3%}), "
+        f"Altman Z'' of {f.altman.z_double_prime:.2f} ({f.altman.zone}), and Beneish M-Score of {f.beneish.m_score:.2f} "
+        f"({'MANIPULATION ALERT' if f.beneish.is_manipulator else 'CLEAN'}). {stage_desc}"
+    )
+
+    assessment = assessment.model_copy(update={
+        "ifrs9_ecl": ecl,
+        "recommendation": rec_directive,
+        "executive_summary": reconciled_summary,
+    })
 
     return assessment, rec_directive
 
@@ -103,7 +125,7 @@ def generate_credit_charts(assessment: ComprehensiveCreditAssessment) -> Dict[st
     # -------------------------------------------------------------
     # 1. Merton Structural Profile Chart
     # -------------------------------------------------------------
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5), dpi=150)
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11.0, 3.4), dpi=150)
     fig.patch.set_facecolor('#f8fafc')
 
     # Panel 1: Capital Structure & Default Barrier
@@ -152,7 +174,7 @@ def generate_credit_charts(assessment: ComprehensiveCreditAssessment) -> Dict[st
     # -------------------------------------------------------------
     # 2. Forensics Scorecard Chart
     # -------------------------------------------------------------
-    fig, (ax_b, ax_z, ax_ccc) = plt.subplots(1, 3, figsize=(16, 5), dpi=150)
+    fig, (ax_b, ax_z, ax_ccc) = plt.subplots(1, 3, figsize=(11.0, 3.3), dpi=150)
     fig.patch.set_facecolor('#f8fafc')
 
     # Beneish Factors
@@ -209,7 +231,7 @@ def generate_credit_charts(assessment: ComprehensiveCreditAssessment) -> Dict[st
     # -------------------------------------------------------------
     # 3. Vasicek Loss Distribution & IFRS 9 ECL Chart
     # -------------------------------------------------------------
-    fig, (ax_v, ax_ecl) = plt.subplots(1, 2, figsize=(14, 5), dpi=150)
+    fig, (ax_v, ax_ecl) = plt.subplots(1, 2, figsize=(11.0, 3.3), dpi=150)
     fig.patch.set_facecolor('#f8fafc')
 
     # Vasicek density
@@ -299,7 +321,7 @@ def generate_credit_memo_html(assessment: ComprehensiveCreditAssessment) -> str:
 <style>
   @page {{
     size: A4 portrait;
-    margin: 18mm 14mm 18mm 14mm;
+    margin: 12mm 12mm 12mm 12mm;
     @bottom-right {{
       content: "Page " counter(page) " of " counter(pages);
       font-size: 8pt;
@@ -316,80 +338,90 @@ def generate_credit_memo_html(assessment: ComprehensiveCreditAssessment) -> str:
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     color: #0f172a;
     background-color: #ffffff;
-    line-height: 1.45;
-    font-size: 9.5pt;
+    line-height: 1.35;
+    font-size: 9pt;
     margin: 0;
     padding: 0;
   }}
   .header {{
-    border-bottom: 2.5px solid #1e293b;
-    padding-bottom: 10px;
-    margin-bottom: 14px;
+    border-bottom: 2px solid #1e293b;
+    padding-bottom: 6px;
+    margin-bottom: 8px;
     display: flex;
     justify-content: space-between;
     align-items: flex-end;
   }}
   .logo {{
-    font-size: 20pt;
+    font-size: 18pt;
     font-weight: 900;
-    letter-spacing: 1.5px;
+    letter-spacing: 1.2px;
     color: #0f172a;
   }}
   .logo span {{ color: #0284c7; }}
   .subtitle {{
-    font-size: 9pt;
+    font-size: 8.5pt;
     color: #475569;
     text-transform: uppercase;
-    letter-spacing: 0.8px;
-    margin-top: 2px;
+    letter-spacing: 0.6px;
+    margin-top: 1px;
   }}
   .badge {{
     display: inline-block;
-    padding: 3px 8px;
+    padding: 2px 6px;
     border-radius: 4px;
     color: #ffffff;
     font-weight: 700;
-    font-size: 9pt;
+    font-size: 8.5pt;
   }}
   .meta-grid {{
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 10px;
+    gap: 8px;
     background: #f1f5f9;
-    padding: 10px 14px;
+    padding: 8px 12px;
     border-radius: 6px;
-    margin-bottom: 14px;
+    margin-bottom: 8px;
   }}
   .meta-cell strong {{
     display: block;
-    font-size: 7.5pt;
+    font-size: 7pt;
     color: #64748b;
     text-transform: uppercase;
   }}
   .meta-cell span {{
-    font-size: 11pt;
+    font-size: 10.5pt;
     font-weight: 700;
     color: #0f172a;
   }}
   h2 {{
-    font-size: 11.5pt;
+    font-size: 11pt;
     color: #1e293b;
     border-left: 4px solid #0284c7;
     padding-left: 8px;
-    margin-top: 14px;
-    margin-bottom: 6px;
+    margin-top: 8px;
+    margin-bottom: 4px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+  }}
+  h2.section-3 {{
+    margin-top: 4px;
+  }}
+  h3 {{
+    font-size: 8.5pt;
+    color: #334155;
+    margin-top: 4px;
+    margin-bottom: 2px;
   }}
   table {{
     width: 100%;
     border-collapse: collapse;
-    margin-top: 6px;
-    margin-bottom: 12px;
-    font-size: 8.5pt;
+    margin-top: 4px;
+    margin-bottom: 6px;
+    font-size: 7.5pt;
   }}
   th, td {{
-    padding: 5px 8px;
+    padding: 3px 6px;
+    font-size: 7.5pt;
     text-align: left;
     border-bottom: 1px solid #e2e8f0;
   }}
@@ -404,25 +436,29 @@ def generate_credit_memo_html(assessment: ComprehensiveCreditAssessment) -> str:
     height: auto;
     border-radius: 4px;
     border: 1px solid #e2e8f0;
-    margin-top: 6px;
-    margin-bottom: 12px;
+    margin-top: 4px;
+    margin-bottom: 6px;
   }}
   .recommendation-box {{
     background: #eff6ff;
     border-left: 4px solid #0284c7;
-    padding: 10px 14px;
-    margin: 12px 0;
+    padding: 8px 12px;
+    margin: 8px 0;
     border-radius: 0 4px 4px 0;
   }}
   .page-break {{
     page-break-before: always;
   }}
   ul {{
-    margin: 4px 0 10px 18px;
+    margin: 2px 0 6px 16px;
     padding: 0;
   }}
   li {{
-    margin-bottom: 3px;
+    margin-bottom: 2px;
+  }}
+  .ifrs9-table {{
+    page-break-inside: avoid;
+    margin-top: 4px;
   }}
 </style>
 </head>
@@ -512,13 +548,13 @@ def generate_credit_memo_html(assessment: ComprehensiveCreditAssessment) -> str:
 
 <img class="chart-img" src="data:image/png;base64,{forensics_b64}" alt="Forensics Scorecard"/>
 
-<h3 style="font-size: 9pt; color: #334155; margin-top: 6px;">Forensic Investigator Findings:</h3>
-<ul style="font-size: 8.5pt; color: #1e293b;">
+<h3 style="font-size: 8.5pt; color: #334155; margin-top: 4px; margin-bottom: 2px;">Forensic Investigator Findings:</h3>
+<ul style="font-size: 8pt; color: #1e293b;">
   {findings_html}
 </ul>
 
-<h2>3. Regulatory Loss Distribution (Vasicek ASRF) & IFRS 9 ECL</h2>
-<table style="width: 100%;">
+<h2 class="section-3" style="margin-top: 4px;">3. Regulatory Loss Distribution (Vasicek ASRF) & IFRS 9 ECL</h2>
+<table style="width: 100%; margin-top: 4px;">
   <tr>
     <th>PIT PD</th>
     <th>Asset Correlation (ρ)</th>
@@ -539,8 +575,8 @@ def generate_credit_memo_html(assessment: ComprehensiveCreditAssessment) -> str:
 
 <img class="chart-img" src="data:image/png;base64,{vasicek_b64}" alt="Vasicek Loss Distribution"/>
 
-<h3 style="font-size: 9pt; color: #334155; margin-top: 6px;">IFRS 9 Amortization & Loss Provisioning Schedule:</h3>
-<table>
+<h3 style="font-size: 8.5pt; color: #334155; margin-top: 4px; margin-bottom: 2px;">IFRS 9 Amortization & Loss Provisioning Schedule:</h3>
+<table class="ifrs9-table" style="page-break-inside: avoid; margin-top: 4px;">
   <thead>
     <tr>
       <th>Period</th>
@@ -690,7 +726,7 @@ def generate_credit_memo_pdf_reportlab(assessment: ComprehensiveCreditAssessment
     story.append(t1)
     story.append(Spacer(1, 6))
 
-    img1 = Image(io.BytesIO(charts['merton_profile']), width=6.8*inch, height=2.6*inch)
+    img1 = Image(io.BytesIO(charts['merton_profile']), width=6.8*inch, height=2.1*inch)
     story.append(img1)
 
     story.append(PageBreak())
@@ -717,13 +753,13 @@ def generate_credit_memo_pdf_reportlab(assessment: ComprehensiveCreditAssessment
     story.append(t2)
     story.append(Spacer(1, 6))
 
-    img2 = Image(io.BytesIO(charts['forensics_scorecard']), width=6.8*inch, height=2.4*inch)
+    img2 = Image(io.BytesIO(charts['forensics_scorecard']), width=6.8*inch, height=1.9*inch)
     story.append(img2)
-    story.append(Spacer(1, 8))
+    story.append(Spacer(1, 6))
 
     # Section 3: Vasicek & ECL
     story.append(Paragraph("3. Regulatory Loss Distribution & IFRS 9 Multi-Period ECL", section_heading))
-    img3 = Image(io.BytesIO(charts['vasicek_loss_dist']), width=6.8*inch, height=2.4*inch)
+    img3 = Image(io.BytesIO(charts['vasicek_loss_dist']), width=6.8*inch, height=1.9*inch)
     story.append(img3)
 
     doc.build(story)
