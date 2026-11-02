@@ -23,7 +23,12 @@ try:
         IFRS9StageInput,
         ComprehensiveCreditRequest,
     )
-    from aegis_engine.core.merton import solve_merton, MertonSolver
+    from aegis_engine.core.merton import (
+        solve_merton,
+        MertonSolver,
+        solve_structural_merton,
+        merton_objective_and_jacobian,
+    )
     from aegis_engine.core.forensics import (
         calculate_beneish,
         calculate_altman_z_double_prime,
@@ -52,7 +57,12 @@ except ModuleNotFoundError:
         IFRS9StageInput,
         ComprehensiveCreditRequest,
     )
-    from core.merton import solve_merton, MertonSolver
+    from core.merton import (
+        solve_merton,
+        MertonSolver,
+        solve_structural_merton,
+        merton_objective_and_jacobian,
+    )
     from core.forensics import (
         calculate_beneish,
         calculate_altman_z_double_prime,
@@ -765,5 +775,60 @@ def test_api_v1_export_memo_pdf_endpoint(clean_forensic_input):
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/pdf"
     assert response.content.startswith(b"%PDF-")
+
+
+def test_solve_structural_merton_direct_call():
+    """Verify solve_structural_merton direct dictionary output contract."""
+    res = solve_structural_merton(
+        equity_market_cap=150.0,
+        equity_volatility=0.40,
+        short_term_debt=30.0,
+        long_term_debt=80.0,
+        risk_free_rate=0.045,
+        asset_drift_mu=0.06,
+        maturity_years=1.0,
+        recovery_rate=0.40
+    )
+    assert "asset_value" in res
+    assert "asset_volatility" in res
+    assert "distance_to_default" in res
+    assert "physical_default_prob" in res
+    assert "risk_neutral_default_prob" in res
+    assert "implied_credit_spread_bps" in res
+    assert res["default_barrier"] == 70.0
+    assert res["asset_value"] > 150.0
+    assert res["distance_to_default"] > 0.0
+
+
+def test_solve_structural_merton_zero_debt():
+    """Verify solve_structural_merton asymptotic clamp when D=0."""
+    res = solve_structural_merton(
+        equity_market_cap=200.0,
+        equity_volatility=0.25,
+        short_term_debt=0.0,
+        long_term_debt=0.0,
+        risk_free_rate=0.04,
+        asset_drift_mu=0.04
+    )
+    assert res["asset_value"] == 200.0
+    assert res["asset_volatility"] == 0.25
+    assert res["distance_to_default"] == 99.0
+    assert res["physical_default_prob"] == 0.0
+    assert res["implied_credit_spread_bps"] == 0.0
+
+
+def test_merton_objective_and_jacobian_clamping():
+    """Verify domain clamping behavior in merton_objective_and_jacobian."""
+    res, jac = merton_objective_and_jacobian(
+        vars_vec=np.array([-10.0, -0.5]),
+        E=100.0,
+        sigma_E=0.4,
+        D=80.0,
+        r=0.05,
+        T=1.0
+    )
+    assert np.all(res == 1e8)
+    assert np.all(jac == np.eye(2) * 1e8)
+
 
 
