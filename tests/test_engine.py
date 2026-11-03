@@ -1154,5 +1154,149 @@ def test_api_comprehensive_assessment_balance_sheet_rejection():
     assert "Accounting Identity Failure" in response.text
 
 
+# =====================================================================
+# 5. HISTORICAL CASE STUDY EMPIRICAL BACKTEST TESTS
+# =====================================================================
+
+def test_case_study_svb_distress_backtest():
+    """
+    Deterministic verification of Silicon Valley Bank (SIVB) Q4 2022 pre-collapse backtest.
+    Validates structural default barrier penetration, credit spread blowout (>500 bps),
+    forensic M-score manipulation flag breach, and IFRS 9 Stage 3 credit impairment.
+    """
+    # 1. Structural Merton Inversion
+    m_res = solve_structural_merton(
+        equity_market_cap=13500.0,
+        equity_volatility=0.68,
+        short_term_debt=85000.0,
+        long_term_debt=15000.0,
+        risk_free_rate=0.0425,
+        asset_drift_mu=0.04,
+        maturity_years=1.0,
+        recovery_rate=0.35
+    )
+
+    assert m_res["default_barrier"] == 92500.0
+    assert 100_000.0 <= m_res["asset_value"] <= 104_000.0
+    assert 0.08 <= m_res["asset_volatility"] <= 0.11
+    assert 1.00 <= m_res["distance_to_default"] <= 1.50  # Severe distress threshold (< 1.50 sigma)
+    assert m_res["physical_default_prob"] > 0.05
+    assert m_res["implied_credit_spread_bps"] > 500.0
+    assert m_res["leverage_ratio"] > 0.85
+
+    # 2. Forensic Accounting Diagnostic (Beneish & Altman)
+    b_res = calculate_beneish_m_score(
+        sales_t=2500.0, sales_prev=2200.0,
+        cogs_t=1200.0, cogs_prev=1050.0,
+        rec_t=500.0, rec_prev=440.0,
+        ca_t=20000.0, ca_prev=25000.0,
+        ppe_t=2000.0, ppe_prev=2000.0,
+        sec_t=120000.0, sec_prev=140000.0,
+        ta_t=212000.0, ta_prev=211000.0,
+        dep_t=200.0, dep_prev=200.0,
+        sga_t=800.0, sga_prev=750.0,
+        net_income_t=1500.0, cfo_t=-2000.0,
+        total_debt_t=195000.0, total_debt_prev=170000.0
+    )
+    assert b_res["m_score"] > -1.78
+    assert b_res["is_manipulator"] is True
+    assert b_res["indices"]["AQI"] > 1.10
+
+    z_res = calculate_altman_z_double_prime(
+        working_capital=-5000.0,
+        retained_earnings=15000.0,
+        ebit=2500.0,
+        book_value_equity=13500.0,
+        total_assets=212000.0,
+        total_liabilities=198500.0
+    )
+    assert z_res["z_double_prime"] < 1.10
+    assert z_res["zone"] == "DISTRESS"
+
+    # 3. Regulatory Loss Distribution & IFRS 9 ECL
+    ecl_res = calculate_ecl_staging_and_loss(
+        current_pd=0.1314,
+        origination_distance_to_default=3.5,
+        current_distance_to_default=1.12,
+        days_past_due=90,
+        is_credit_impaired=True,
+        ead_schedule=[100000.0, 80000.0, 60000.0, 40000.0, 20000.0],
+        effective_interest_rate=0.06
+    )
+    assert ecl_res["assigned_stage"] == 3
+    assert ecl_res["is_lifetime_ecl"] is True
+    assert ecl_res["ecl_percentage_of_ead"] > 18.0
+
+
+def test_case_study_msft_aaa_fortress_benchmark():
+    """
+    Deterministic verification of Microsoft Corporation (MSFT) AAA sovereign-equivalent fortress benchmark.
+    Validates extreme solvency buffer (DD > 6.20 sigma), zero fair credit spread (0.0 bps),
+    pristine forensic M-score (is_manipulator is False), Altman Z'' in Safe Zone, and Stage 1 IFRS 9 staging.
+    """
+    # 1. Structural Merton Inversion
+    m_res = solve_structural_merton(
+        equity_market_cap=2400000.0,
+        equity_volatility=0.225,
+        short_term_debt=5200.0,
+        long_term_debt=42000.0,
+        risk_free_rate=0.045,
+        asset_drift_mu=0.08,
+        maturity_years=1.0,
+        recovery_rate=0.45
+    )
+
+    assert m_res["default_barrier"] == 26200.0
+    assert m_res["asset_value"] >= 2_400_000.0
+    assert 0.20 <= m_res["asset_volatility"] <= 0.25
+    assert m_res["distance_to_default"] > 6.20  # AAA sovereign-equivalent boundary
+    assert m_res["physical_default_prob"] < 0.0001
+    assert abs(m_res["implied_credit_spread_bps"]) < 1.0  # Zero spread premium
+    assert m_res["leverage_ratio"] < 0.02
+
+    # 2. Forensic Accounting Diagnostic (Beneish & Altman)
+    b_res = calculate_beneish_m_score(
+        sales_t=211915.0, sales_prev=198270.0,
+        cogs_t=65863.0, cogs_prev=62650.0,
+        rec_t=38290.0, rec_prev=35800.0,
+        ca_t=184257.0, ca_prev=169684.0,
+        ppe_t=110000.0, ppe_prev=95000.0,
+        sec_t=50000.0, sec_prev=45000.0,
+        ta_t=411976.0, ta_prev=364840.0,
+        dep_t=13000.0, dep_prev=12000.0,
+        sga_t=27000.0, sga_prev=25000.0,
+        net_income_t=72361.0, cfo_t=87582.0,
+        total_debt_t=47000.0, total_debt_prev=48000.0
+    )
+    assert b_res["m_score"] < -1.78
+    assert b_res["is_manipulator"] is False
+
+    z_res = calculate_altman_z_double_prime(
+        working_capital=80000.0,
+        retained_earnings=118000.0,
+        ebit=88500.0,
+        book_value_equity=206223.0,
+        total_assets=411976.0,
+        total_liabilities=205753.0
+    )
+    assert z_res["z_double_prime"] > 2.60
+    assert z_res["zone"] == "SAFE"
+
+    # 3. Regulatory Loss Distribution & IFRS 9 ECL
+    ecl_res = calculate_ecl_staging_and_loss(
+        current_pd=0.0001,
+        origination_distance_to_default=6.5,
+        current_distance_to_default=6.5,
+        days_past_due=0,
+        is_credit_impaired=False,
+        ead_schedule=[47200.0],
+        effective_interest_rate=0.045
+    )
+    assert ecl_res["assigned_stage"] == 1
+    assert ecl_res["is_lifetime_ecl"] is False
+    assert ecl_res["ecl_percentage_of_ead"] < 0.1
+
+
+
 
 

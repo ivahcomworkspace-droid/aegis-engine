@@ -321,3 +321,7 @@ def calculate_ifrs9_ecl(stage_in: IFRS9StageInput) -> ECLResult:
         ecl_percentage_of_ead=raw_res["ecl_percentage_of_ead"],
         period_schedules=schedules,
     )
+
+
+# Functional alias for multi-period ECL computation
+calculate_multi_period_ecl = calculate_ecl_staging_and_loss
