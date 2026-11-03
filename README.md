@@ -2,7 +2,7 @@
 
 [![Live Web Terminal](https://img.shields.io/badge/Live%20Demo-Render-00c7b7?style=for-the-badge&logo=render&logoColor=white)](https://aegis-engine-s96v.onrender.com)
 [![OpenAPI Docs](https://img.shields.io/badge/API%20Docs-FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://aegis-engine-s96v.onrender.com/docs)
-[![Pytest Suite](https://img.shields.io/badge/Tests-55%20Passed-brightgreen?style=for-the-badge)](tests/test_engine.py)
+[![Pytest Suite](https://img.shields.io/badge/Tests-57%20Passed-brightgreen?style=for-the-badge)](tests/test_engine.py)
 
 > **Live Production Terminal:** [https://aegis-engine-s96v.onrender.com](https://aegis-engine-s96v.onrender.com)  
 > **Interactive Swagger API:** [https://aegis-engine-s96v.onrender.com/docs](https://aegis-engine-s96v.onrender.com/docs)
@@ -148,7 +148,7 @@ aegis_engine/
 ├── tests/
 │   ├── __init__.py
 │   ├── conftest.py           # Pytest root configuration
-│   └── test_engine.py        # 40 deterministic unit, numerical & integration tests
+│   └── test_engine.py        # 57 deterministic unit, numerical & integration tests
 ├── Dockerfile                # Multi-stage production container build (python:3.11-slim)
 ├── requirements.txt          # Frozen production dependencies
 └── Makefile                  # Unified developer CLI: test, lint, run, docker-build
@@ -184,7 +184,7 @@ cd aegis-engine
 # Install dependencies
 pip install -r requirements.txt
 
-# Run the test suite (40 tests)
+# Run the test suite (57 tests)
 python -m pytest tests/test_engine.py -v
 
 # Launch the FastAPI server + Web Terminal
