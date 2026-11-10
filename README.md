@@ -76,7 +76,7 @@ $$
 1. **8-Factor Beneish M-Score:**
 
 $$
-\text{M} = -4.84 + 0.920\text{DSRI} + 0.528\text{GMI} + 0.404\text{AQI} + 0.892\text{SGI} + 0.115\text{DEPI} - 0.172\text{SGAI} + 4.037\text{TATA} + 0.0327\text{LVGI}
+\text{M} = -4.84 + 0.920\text{DSRI} + 0.528\text{GMI} + 0.404\text{AQI} + 0.892\text{SGI} + 0.115\text{DEPI} - 0.172\text{SGAI} + 4.679\text{TATA} - 0.327\text{LVGI}
 $$
 
    - Active manipulation threshold: $\text{M-Score} > -1.78$.
@@ -201,3 +201,13 @@ docker run -p 8000:8000 aegis-credit-engine
 ```
 
 Open `http://localhost:8000` to interact with the Live Terminal.
+
+---
+
+## 6. Empirical Case Studies
+
+### Silicon Valley Bank (SIVB) Distress Backtest
+
+> Under review: Beneish result and related figures are being recomputed after a coefficient correction. Do not rely on the M-score reported here.
+
+Refer to [`docs/case_studies/SVB_Q4_2022_distress_backtest.md`](docs/case_studies/SVB_Q4_2022_distress_backtest.md) for the detailed historical pre-insolvency audit.

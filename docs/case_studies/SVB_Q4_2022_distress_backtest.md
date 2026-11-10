@@ -1,3 +1,5 @@
+> Under review: Beneish result and related figures are being recomputed after a coefficient correction. Do not rely on the M-score reported here.
+
 # Empirical Backtest: Silicon Valley Bank (SIVB) — Q4 2022 Pre-Insolvency Forensic Audit
 
 **Target Entity:** SVB Financial Group (NASDAQ: SIVB)  

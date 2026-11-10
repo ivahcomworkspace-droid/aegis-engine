@@ -39,7 +39,9 @@ def calculate_beneish_m_score(
     total_debt_t: float, total_debt_prev: float
 ) -> Dict[str, Any]:
     """
-    Computes the 8-Factor Beneish M-Score and flags potential earnings manipulation.
+    Computes the 8-Factor Beneish M-Score (Beneish 1999, 8-variable model) and flags potential earnings manipulation.
+    Formula:
+    M = -4.84 + 0.920*DSRI + 0.528*GMI + 0.404*AQI + 0.892*SGI + 0.115*DEPI - 0.172*SGAI + 4.679*TATA - 0.327*LVGI
     Includes zero-division guards across comparative accounting periods.
     """
     # Guard against zero denominators in primary statement lines
@@ -94,8 +96,8 @@ def calculate_beneish_m_score(
         + 0.892 * sgi
         + 0.115 * depi
         - 0.172 * sgai
-        + 4.037 * tata
-        + 0.0327 * lvgi
+        + 4.679 * tata
+        - 0.327 * lvgi
     )
 
     is_manipulator = bool(m_score > -1.78)
@@ -131,9 +133,9 @@ def calculate_beneish_m_score(
 
 def calculate_beneish(inp: ForensicInput) -> BeneishResult:
     """
-    Computes the standard 8-factor Beneish M-Score from Pydantic ForensicInput.
+    Computes the standard 8-factor Beneish M-Score from Pydantic ForensicInput (Beneish 1999, 8-variable model).
     M = -4.84 + 0.920*DSRI + 0.528*GMI + 0.404*AQI + 0.892*SGI + 0.115*DEPI
-        - 0.172*SGAI + 4.037*TATA + 0.0327*LVGI
+        - 0.172*SGAI + 4.679*TATA - 0.327*LVGI
     Flag: M-Score > -1.78 indicates high likelihood of accounting manipulation.
     """
     raw_res = calculate_beneish_m_score(
