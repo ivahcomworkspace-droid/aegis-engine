@@ -56,7 +56,9 @@ USER aegis
 
 ENV PYTHONPATH="/app" \
     PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    RENDER="true" \
+    AEGIS_SEC_USER_AGENT="Aegis Institutional Credit Risk Engine contact@aegis-engine-s96v.onrender.com"
 
 EXPOSE 8000
 

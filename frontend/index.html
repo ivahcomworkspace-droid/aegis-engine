@@ -458,6 +458,19 @@
       font-size: 13px;
       font-weight: 600;
       white-space: nowrap;
+      transition: background 0.2s ease, border-color 0.2s ease;
+    }
+    .uh-hero-chip.is-live {
+      background: rgba(0, 100, 0, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.4);
+    }
+    .uh-hero-chip.is-warning {
+      background: rgba(255, 165, 0, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.4);
+    }
+    .uh-source.is-error {
+      color: #CC0000;
+      font-weight: 600;
     }
     .uh-hero-chip > span:last-child {
       overflow: hidden;
@@ -1131,6 +1144,7 @@
           <div class="uh-hero-chips">
             <span class="uh-hero-chip"><span class="material-icons is-sm" aria-hidden="true">business</span><span id="borrowerName">Apex Industrial Corp</span></span>
             <span class="uh-hero-chip"><span class="material-icons is-sm" aria-hidden="true">sell</span><span id="borrowerTicker">APEX</span></span>
+            <span id="borrowerStatusChip" class="uh-hero-chip"><span id="borrowerStatusIcon" class="material-icons is-sm" aria-hidden="true">science</span><span id="borrowerStatusText">Sample Benchmark</span></span>
           </div>
           <div class="uh-hero-tile">
             <span class="uh-hero-tile-label">Risk band</span>
@@ -1654,12 +1668,93 @@
       });
     }
 
+    // Well-known companies directory fallback (ensures immediate counterpart resolution even before full directory loads)
+    const POPULAR_COMPANIES = {
+      AAPL: 'Apple Inc.',
+      MSFT: 'Microsoft Corp',
+      NVDA: 'NVIDIA Corp',
+      GOOGL: 'Alphabet Inc.',
+      GOOG: 'Alphabet Inc.',
+      AMZN: 'Amazon.com Inc.',
+      META: 'Meta Platforms, Inc.',
+      TSLA: 'Tesla, Inc.',
+      JPM: 'JPMorgan Chase & Co',
+      BAC: 'Bank of America Corp',
+      WMT: 'Walmart Inc.',
+      XOM: 'Exxon Mobil Corp',
+      JNJ: 'Johnson & Johnson',
+      PG: 'Procter & Gamble Co',
+      ORCL: 'Oracle Corp',
+      NFLX: 'Netflix, Inc.',
+      DIS: 'Walt Disney Co',
+      APEX: 'Apex Industrial Corp'
+    };
+    const POPULAR_TICKERS = Object.fromEntries(
+      Object.entries(POPULAR_COMPANIES).map(([t, n]) => [n.toLowerCase(), t])
+    );
+
     // Shows the borrower being assessed on the directive card
     function syncBorrower() {
-      document.getElementById('borrowerName').innerText = document.getElementById('inpCompany').value.trim() || 'Apex Industrial Corp';
-      document.getElementById('borrowerTicker').innerText = document.getElementById('inpTicker').value.trim() || 'APEX';
+      const compInp = document.getElementById('inpCompany');
+      const tickInp = document.getElementById('inpTicker');
+      let compVal = compInp.value.trim();
+      let tickVal = normalizeTicker(tickInp.value);
+
+      // Guard against state mismatch: if ticker is not APEX but company is still "Apex Industrial Corp"
+      if (tickVal && tickVal !== 'APEX' && (!compVal || compVal === 'Apex Industrial Corp')) {
+        if (POPULAR_COMPANIES[tickVal]) {
+          compVal = POPULAR_COMPANIES[tickVal];
+          compInp.value = compVal;
+          compInp.dataset.autofilled = '1';
+        } else if (companyDirectory) {
+          const hit = companyDirectory.find(e => e.lt === tickVal.toLowerCase());
+          if (hit) {
+            compVal = hit.n;
+            compInp.value = compVal;
+            compInp.dataset.autofilled = '1';
+          }
+        }
+      } else if ((!tickVal || tickVal === 'APEX') && compVal && compVal !== 'Apex Industrial Corp') {
+        const lowerComp = compVal.toLowerCase();
+        if (POPULAR_TICKERS[lowerComp]) {
+          tickVal = POPULAR_TICKERS[lowerComp];
+          tickInp.value = tickVal;
+          tickInp.dataset.autofilled = '1';
+        } else if (companyDirectory) {
+          const hit = companyDirectory.find(e => e.ln === lowerComp);
+          if (hit) {
+            tickVal = hit.t;
+            tickInp.value = tickVal;
+            tickInp.dataset.autofilled = '1';
+          }
+        }
+      }
+
+      document.getElementById('borrowerName').innerText = compVal || 'Apex Industrial Corp';
+      document.getElementById('borrowerTicker').innerText = tickVal || 'APEX';
+
+      // Status chip on hero banner
+      const statusChip = document.getElementById('borrowerStatusChip');
+      const statusIcon = document.getElementById('borrowerStatusIcon');
+      const statusText = document.getElementById('borrowerStatusText');
+      if (statusChip && statusIcon && statusText) {
+        if (loadedBorrower && tickVal === loadedBorrower.ticker) {
+          statusChip.className = 'uh-hero-chip is-live';
+          statusIcon.innerText = 'verified';
+          statusText.innerText = 'Live SEC EDGAR';
+        } else if (!tickVal || tickVal === 'APEX') {
+          statusChip.className = 'uh-hero-chip';
+          statusIcon.innerText = 'science';
+          statusText.innerText = 'Sample Benchmark';
+        } else {
+          statusChip.className = 'uh-hero-chip is-warning';
+          statusIcon.innerText = 'edit_note';
+          statusText.innerText = 'Manual / Unlinked';
+        }
+      }
+
       // Loaded figures belong to the loaded ticker: typing a different one returns to manual inputs
-      if (loadedBorrower && normalizeTicker(document.getElementById('inpTicker').value) !== loadedBorrower.ticker) {
+      if (loadedBorrower && tickVal !== loadedBorrower.ticker) {
         clearLoadedData();
       }
     }
@@ -1823,6 +1918,19 @@
     async function loadBorrowerData() {
       const ticker = normalizeTicker(document.getElementById('inpTicker').value);
       if (!ticker || loadingBorrower) return;
+
+      // Immediate counterpart synchronization to prevent showing stale Apex name
+      if (POPULAR_COMPANIES[ticker]) {
+        document.getElementById('inpCompany').value = POPULAR_COMPANIES[ticker];
+        syncBorrower();
+      } else if (companyDirectory) {
+        const hit = companyDirectory.find((e) => e.lt === ticker.toLowerCase());
+        if (hit) {
+          document.getElementById('inpCompany').value = hit.n;
+          syncBorrower();
+        }
+      }
+
       loadingBorrower = true;
       const button = document.getElementById('btnLoadData');
       button.disabled = true;
@@ -1836,19 +1944,36 @@
           throw new Error(typeof body.detail === 'string' ? body.detail : `The server answered with status ${response.status}.`);
         }
         applyBorrowerData(body);
-        const notes = body.warnings.length;
+        const notes = body.warnings ? body.warnings.length : 0;
         showSnackbar(notes ? `Loaded ${body.company_name} with ${notes} note${notes > 1 ? 's' : ''}` : `Loaded ${body.company_name}`);
       } catch (err) {
         const message = err.name === 'AbortError'
           ? 'Loading took longer than a minute. Try again.'
           : err instanceof TypeError ? "Couldn't reach the Aegis server." : err.message;
-        renderDataStatus('error', { ticker, message });
+        handleBorrowerLoadFailure(ticker, message);
         showSnackbar(message);
       } finally {
         clearTimeout(timer);
         button.disabled = false;
         loadingBorrower = false;
       }
+    }
+
+    function handleBorrowerLoadFailure(ticker, message) {
+      loadedBorrower = null;
+      renderDataStatus('error', { ticker, message });
+      Object.keys(SOURCE_LINES).forEach((id) => {
+        const line = document.getElementById(id);
+        line.textContent = `Live load failed: manual/sample figures (${ticker} unlinked)`;
+        line.className = 'uh-source is-error';
+        line.hidden = false;
+      });
+      const basis = document.getElementById('forensicBasis');
+      if (basis) {
+        basis.innerText = `Sample financials · Live load failed for ${ticker}`;
+      }
+      syncBorrower();
+      handleParamChange();
     }
 
     function applyBorrowerData(data) {
@@ -1885,10 +2010,12 @@
       if (std !== null) setSlider('rngSTD', 0, niceCeil(Math.max(std * 3, debt * 0.5, 1)), std);
       if (ltd !== null) setSlider('rngLTD', 0, niceCeil(Math.max(ltd * 3, debt * 0.5, 1)), ltd);
       if (r !== null) setSlider('rngRFR', 0, Math.max(10, niceCeil(r * 150)), r * 100);
+      refreshValueChips();
     }
 
     function setSource(id, point) {
       const line = document.getElementById(id);
+      line.className = 'uh-source';
       if (!point || point.value === null || point.value === undefined) {
         line.hidden = true;
         line.textContent = '';
@@ -1900,7 +2027,11 @@
 
     function clearLoadedData() {
       loadedBorrower = null;
-      Object.keys(SOURCE_LINES).forEach((id) => setSource(id, null));
+      Object.keys(SOURCE_LINES).forEach((id) => {
+        const line = document.getElementById(id);
+        line.className = 'uh-source';
+        setSource(id, null);
+      });
       renderDataStatus('manual');
       handleParamChange();
     }
@@ -2083,19 +2214,48 @@
     // Typing an exact ticker fills the company, and typing an exact company name fills the ticker.
     // A value filled this way is cleared again when the typed text stops matching.
     function fillCounterpart(input) {
-      if (!companyDirectory) return;
       const isTicker = input.id === 'inpTicker';
       const other = document.getElementById(isTicker ? 'inpCompany' : 'inpTicker');
       const value = input.value.trim().toLowerCase();
-      const hit = !value ? null : isTicker
-        ? companyDirectory.find((entry) => entry.lt === value.replace(/[./]/g, '-'))
-        : companyDirectory.find((entry) => entry.ln === value);
-      if (hit) {
-        other.value = isTicker ? hit.n : hit.t;
-        other.dataset.autofilled = '1';
-      } else if (other.dataset.autofilled) {
-        other.value = '';
-        delete other.dataset.autofilled;
+      if (!value) {
+        if (other.dataset.autofilled) {
+          other.value = '';
+          delete other.dataset.autofilled;
+        }
+        syncBorrower();
+        return;
+      }
+      let hitName = null;
+      let hitTicker = null;
+      if (isTicker) {
+        const norm = value.toUpperCase().replace(/[./]/g, '-');
+        if (POPULAR_COMPANIES[norm]) {
+          hitName = POPULAR_COMPANIES[norm];
+        } else if (companyDirectory) {
+          const match = companyDirectory.find((entry) => entry.lt === value.replace(/[./]/g, '-'));
+          if (match) hitName = match.n;
+        }
+        if (hitName) {
+          other.value = hitName;
+          other.dataset.autofilled = '1';
+        } else if (other.dataset.autofilled) {
+          other.value = '';
+          delete other.dataset.autofilled;
+        }
+      } else {
+        if (POPULAR_TICKERS[value]) {
+          hitTicker = POPULAR_TICKERS[value];
+        } else if (companyDirectory) {
+          const match = companyDirectory.find((entry) => entry.ln === value);
+          if (match) hitTicker = match.t;
+        }
+        if (hitTicker) {
+          other.value = hitTicker;
+          other.dataset.autofilled = '1';
+        } else if (other.dataset.autofilled) {
+          other.value = '';
+          delete other.dataset.autofilled;
+        }
       }
       syncBorrower();
     }

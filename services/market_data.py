@@ -57,6 +57,7 @@ YAHOO_CHART_URLS = (
     "https://query2.finance.yahoo.com/v8/finance/chart/{symbol}?range=1y&interval=1d&includeAdjustedClose=true",
 )
 TOOL_USER_AGENT = "Mozilla/5.0 (compatible; AegisEngine/2.0)"
+DEFAULT_SEC_USER_AGENT = "Aegis Institutional Credit Risk Engine contact@aegis-engine-s96v.onrender.com"
 
 TICKERS_TTL = 24 * 3600
 DIRECTORY_TTL = 24 * 3600
@@ -206,14 +207,17 @@ def setting(name: str, default: Optional[str] = None) -> Optional[str]:
 
 def sec_user_agent() -> str:
     agent = setting("AEGIS_SEC_USER_AGENT")
-    if not agent or "@" not in agent:
-        raise MarketDataError(
-            503,
-            "Live data isn't set up yet: the SEC requires every automated request to include a contact. "
-            "Set AEGIS_SEC_USER_AGENT to your name or company and an email, for example "
-            "\"Acme Credit risk@acme.com\", in the environment or in the project's .env file.",
-        )
-    return agent
+    if agent and "@" in agent:
+        return agent
+    # Production / Cloud fallback: handles Render deployments where environment variables may not be explicitly set
+    if os.environ.get("RENDER") or os.environ.get("AEGIS_ENV") == "production":
+        return DEFAULT_SEC_USER_AGENT
+    raise MarketDataError(
+        503,
+        "Live data isn't set up yet: the SEC requires every automated request to include a contact. "
+        "Set AEGIS_SEC_USER_AGENT to your name or company and an email, for example "
+        "\"Acme Credit risk@acme.com\", in the environment or in the project's .env file.",
+    )
 
 
 # --- Cache -------------------------------------------------------------------------------------

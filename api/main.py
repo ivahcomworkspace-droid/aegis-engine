@@ -21,6 +21,12 @@ from starlette.concurrency import run_in_threadpool
 
 logger = logging.getLogger("aegis_engine.api")
 
+# Provide default SEC User-Agent contact for production cloud deployments (e.g. Render)
+os.environ.setdefault(
+    "AEGIS_SEC_USER_AGENT",
+    "Aegis Institutional Credit Risk Engine contact@aegis-engine-s96v.onrender.com"
+)
+
 try:
     from aegis_engine.schemas.credit_models import (
         MertonInput,
