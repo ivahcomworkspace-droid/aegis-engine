@@ -351,9 +351,26 @@ def _compute_internal_risk_band_and_stance(
         band = AegisInternalRiskBand.BAND_1
         stance = "INDICATIVE: MINIMAL RISK / PRIME SOLVENCY — Exceptional asset backing & fortress liquidity coverage."
 
+    pd_val = float(merton_res.default_probability_physical)
+    if pd_val <= 0.0:
+        pd_disp = "0.000%"
+    elif pd_val * 100.0 >= 0.001:
+        pd_disp = f"{pd_val * 100.0:.3f}%"
+    else:
+        pd_disp = f"{pd_val * 100.0:.2e}%"
+
+    clean_forensics = (not is_manip) and (z_double >= 1.80 or not use_forensics)
+    reconciliation_note = ""
+    if band in (AegisInternalRiskBand.BAND_7, AegisInternalRiskBand.BAND_6) and clean_forensics:
+        reconciliation_note = (
+            " Risk Reconciliation: High risk classification is driven by structural market distress "
+            f"(Distance-to-Default {dd:.2f}σ, equity market cap / debt barrier compression) "
+            "despite clean historical forensic accounting."
+        )
+
     summary = (
         f"Borrower internal credit assessment: {band.value}. "
-        f"Physical Distance-to-Default: {dd:.2f}σ (PD: {merton_res.default_probability_physical:.3%}), "
+        f"Physical Distance-to-Default: {dd:.2f}σ (PD: {pd_disp}), "
         + (
             f"Altman Z'': {z_double:.2f} ({forensics_res.altman.zone}), Beneish M-Score: {m_score:.2f} "
             f"({'MANIPULATION ALERT' if is_manip else 'CLEAN'}). "
@@ -362,6 +379,7 @@ def _compute_internal_risk_band_and_stance(
         )
         + f"IFRS 9 Staging: {ecl_res.stage_name} "
         f"with ECL allowance of ${ecl_res.total_ecl:,.2f} ({ecl_res.ecl_percentage_of_ead:.2f}% EAD)."
+        + reconciliation_note
     )
 
     return band, stance, summary

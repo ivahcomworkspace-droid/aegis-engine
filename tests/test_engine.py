@@ -1690,6 +1690,87 @@ def test_forensic_input_1pct_identity_check():
         ForensicInput(**base_kwargs, book_value_equity_t=585.0)
 
 
+def test_pd_nonzero_precision_under_standard_normal():
+    """Issue 2: Verify PD is not truncated to 0.000% under standard normal model when DD is ~4.95 sigma."""
+    m_in = MertonInput(
+        equity_value=200.0,
+        equity_volatility=0.35,
+        short_term_debt=30.0,
+        long_term_debt=100.0,
+        risk_free_rate=0.045
+    )
+    res = solve_merton(m_in)
+    assert res.distance_to_default_physical > 4.5
+    # Non-zero floating point probability under standard normal Phi(-4.95) ~ 3.71e-7
+    assert res.default_probability_physical > 0.0
+    assert pytest.approx(res.default_probability_physical, rel=0.1) == 3.71e-7
+
+
+def test_risk_reconciliation_explanation_for_stage3_band7_with_clean_forensics(clean_forensic_input):
+    """Issue 1: Verify reconciliation explains why Stage 3 / Band 7 occurs alongside clean forensics."""
+    # Create request with severe structural distress and Stage 3 DPD=90
+    # but clean, unmanipulated accounting statements
+    req_data = {
+        "company_name": "Solvency Distressed Corp",
+        "ticker": "SDC",
+        "merton_input": {
+            "equity_value": 10.0,
+            "equity_volatility": 0.85,
+            "short_term_debt": 80.0,
+            "long_term_debt": 200.0,
+            "risk_free_rate": 0.045,
+            "maturity": 1.0,
+            "loss_given_default": 0.45
+        },
+        "days_past_due": 90,
+        "forensic_input": clean_forensic_input.model_dump(),
+        "is_financial_institution": False,
+        "loan_tenor_years": 5
+    }
+    resp = client.post("/credit/comprehensive", json=req_data)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["internal_risk_band"] == AegisInternalRiskBand.BAND_7.value
+    assert data["ifrs9_ecl"]["assigned_stage"] == 3
+    assert data["forensics"]["beneish"]["is_manipulator"] is False
+    # Summary must explicitly explain the divergence between structural distress and clean forensics
+    assert "Risk Reconciliation" in data["executive_summary"]
+    assert "structural market distress" in data["executive_summary"]
+
+
+def test_export_underwriting_memo_pdf_endpoint(clean_forensic_input):
+    """Issue 4: Verify /credit/export-memo returns a valid, downloadable PDF report with nested payload."""
+    payload = {
+        "company_name": "Apex Industrial Corp",
+        "ticker": "APEX",
+        "equity_market_cap": 200.0,
+        "equity_volatility": 0.35,
+        "short_term_debt": 30.0,
+        "long_term_debt": 100.0,
+        "risk_free_rate": 0.045,
+        "merton_input": {
+            "equity_value": 200.0,
+            "equity_volatility": 0.35,
+            "short_term_debt": 30.0,
+            "long_term_debt": 100.0,
+            "risk_free_rate": 0.045,
+            "maturity": 1.0,
+            "loss_given_default": 0.45
+        },
+        "forensic_input": clean_forensic_input.model_dump(),
+        "is_financial_institution": False,
+        "loan_tenor_years": 5
+    }
+    resp = client.post("/api/v1/credit/export-memo", json=payload)
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/pdf"
+    assert "Aegis_Credit_Memo_Apex_Industrial_Corp.pdf" in resp.headers["content-disposition"]
+    # Verify PDF file header
+    assert resp.content.startswith(b"%PDF")
+    assert len(resp.content) > 50_000
+
+
+
 
 
 

@@ -353,33 +353,81 @@ class ComprehensiveCreditRequest(BaseModel):
     @classmethod
     def populate_from_nested(cls, data: Any) -> Any:
         if isinstance(data, dict):
+            def _extract_val(val: Any) -> Any:
+                if isinstance(val, dict):
+                    return val.get("value")
+                return val
+
             m_in = data.get("merton_input")
             f_in = data.get("forensic_input")
             if m_in and isinstance(m_in, dict):
-                data.setdefault("equity_market_cap", m_in.get("equity_value"))
-                data.setdefault("equity_volatility", m_in.get("equity_volatility"))
-                data.setdefault("short_term_debt", m_in.get("short_term_debt"))
-                data.setdefault("long_term_debt", m_in.get("long_term_debt"))
-                data.setdefault("risk_free_rate", m_in.get("risk_free_rate", 0.045))
-                data.setdefault("maturity_years", m_in.get("maturity", 1.0))
-                data.setdefault("recovery_rate", 1.0 - m_in.get("loss_given_default", 0.45))
-                data.setdefault("loan_exposure", float(m_in.get("short_term_debt", 0.0)) + float(m_in.get("long_term_debt", 100.0)))
+                eq_v = _extract_val(m_in.get("equity_value"))
+                if eq_v is not None:
+                    data.setdefault("equity_market_cap", float(eq_v))
+                vol_v = _extract_val(m_in.get("equity_volatility"))
+                if vol_v is not None:
+                    data.setdefault("equity_volatility", float(vol_v))
+                std_v = _extract_val(m_in.get("short_term_debt"))
+                if std_v is not None:
+                    data.setdefault("short_term_debt", float(std_v))
+                ltd_v = _extract_val(m_in.get("long_term_debt"))
+                if ltd_v is not None:
+                    data.setdefault("long_term_debt", float(ltd_v))
+                r_v = _extract_val(m_in.get("risk_free_rate"))
+                if r_v is not None:
+                    data.setdefault("risk_free_rate", float(r_v))
+                mat_v = _extract_val(m_in.get("maturity"))
+                if mat_v is not None:
+                    data.setdefault("maturity_years", float(mat_v))
+                lgd_v = _extract_val(m_in.get("loss_given_default"))
+                if lgd_v is not None:
+                    data.setdefault("recovery_rate", 1.0 - float(lgd_v))
+                std_num = float(_extract_val(m_in.get("short_term_debt")) or 0.0)
+                ltd_num = float(_extract_val(m_in.get("long_term_debt")) or 0.0)
+                if std_num + ltd_num > 0:
+                    data.setdefault("loan_exposure", std_num + ltd_num)
+
             if f_in and isinstance(f_in, dict):
-                data.setdefault("total_assets", f_in.get("total_assets_t"))
-                data.setdefault("total_liabilities", f_in.get("total_liabilities_t"))
-                data.setdefault("book_value_equity", f_in.get("book_value_equity_t"))
-                data.setdefault("is_financial_institution", f_in.get("is_financial_institution", False))
-                wc = f_in.get("working_capital_t")
+                ta = _extract_val(f_in.get("total_assets_t"))
+                if ta is not None:
+                    data.setdefault("total_assets", float(ta))
+                tl = _extract_val(f_in.get("total_liabilities_t"))
+                if tl is not None:
+                    data.setdefault("total_liabilities", float(tl))
+                bve = _extract_val(f_in.get("book_value_equity_t"))
+                if bve is not None:
+                    data.setdefault("book_value_equity", float(bve))
+                if "is_financial_institution" in f_in:
+                    data.setdefault("is_financial_institution", bool(f_in["is_financial_institution"]))
+                wc = _extract_val(f_in.get("working_capital_t"))
                 if wc is None and "current_assets_t" in f_in and "current_liabilities_t" in f_in:
-                    wc = float(f_in.get("current_assets_t", 0.0)) - float(f_in.get("current_liabilities_t", 0.0))
-                data.setdefault("working_capital", wc if wc is not None else 100.0)
-                data.setdefault("retained_earnings", f_in.get("retained_earnings_t", 100.0))
-                data.setdefault("ebit", f_in.get("ebit_t", 50.0))
-                data.setdefault("receivables", f_in.get("receivables_t", 50.0))
-                data.setdefault("inventory", f_in.get("inventory_t", 60.0))
-                data.setdefault("payables", f_in.get("accounts_payable_t", 45.0))
-                data.setdefault("revenue", f_in.get("sales_t", 350.0))
-                data.setdefault("cogs", f_in.get("cogs_t", 240.0))
+                    ca = _extract_val(f_in.get("current_assets_t"))
+                    cl = _extract_val(f_in.get("current_liabilities_t"))
+                    if ca is not None and cl is not None:
+                        wc = float(ca) - float(cl)
+                if wc is not None:
+                    data.setdefault("working_capital", float(wc))
+                re = _extract_val(f_in.get("retained_earnings_t"))
+                if re is not None:
+                    data.setdefault("retained_earnings", float(re))
+                ebit = _extract_val(f_in.get("ebit_t"))
+                if ebit is not None:
+                    data.setdefault("ebit", float(ebit))
+                rec = _extract_val(f_in.get("receivables_t"))
+                if rec is not None:
+                    data.setdefault("receivables", float(rec))
+                inv = _extract_val(f_in.get("inventory_t"))
+                if inv is not None:
+                    data.setdefault("inventory", float(inv))
+                pay = _extract_val(f_in.get("accounts_payable_t"))
+                if pay is not None:
+                    data.setdefault("payables", float(pay))
+                rev = _extract_val(f_in.get("sales_t"))
+                if rev is not None:
+                    data.setdefault("revenue", float(rev))
+                cogs = _extract_val(f_in.get("cogs_t"))
+                if cogs is not None:
+                    data.setdefault("cogs", float(cogs))
         return data
 
     @model_validator(mode='after')

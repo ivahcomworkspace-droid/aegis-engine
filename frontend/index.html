@@ -1121,6 +1121,13 @@
             <h2 id="directiveTitle" class="uh-hero-title">INDICATIVE: MINIMAL RISK — SUPERIOR CAPACITY</h2>
           </div>
           <p id="directiveDesc" class="uh-hero-desc">Robust solvency buffer with negligible refinancing friction; asset volatility inversion confirms strong enterprise liquidation coverage.</p>
+          <div id="riskReconciliationNote" class="mt-3 p-3 rounded-xl text-xs bg-white/20 text-white backdrop-blur-sm border border-white/25 hidden" role="note" aria-live="polite">
+            <div class="font-bold flex items-center gap-1.5 mb-1">
+              <span class="material-icons is-sm" aria-hidden="true">info</span>
+              <span>Model Synthesis: Structural Solvency vs. Accounting Forensics</span>
+            </div>
+            <p id="riskReconciliationText" class="leading-relaxed"></p>
+          </div>
           <div class="uh-hero-chips">
             <span class="uh-hero-chip"><span class="material-icons is-sm" aria-hidden="true">business</span><span id="borrowerName">Apex Industrial Corp</span></span>
             <span class="uh-hero-chip"><span class="material-icons is-sm" aria-hidden="true">sell</span><span id="borrowerTicker">APEX</span></span>
@@ -2504,9 +2511,18 @@
       }
     }
 
+    function formatPD(pd) {
+      if (!pd || pd <= 0) return '0.000%';
+      const pct = pd * 100;
+      if (pct >= 0.01) return `${pct.toFixed(3)}%`;
+      if (pct >= 0.0001) return `${pct.toFixed(4)}%`;
+      return `${pct.toExponential(2)}%`;
+    }
+
     function renderResults(m, simManip, simCCC) {
       document.getElementById('kpiDD').innerText = `${m.distance_to_default_physical.toFixed(2)}σ`;
-      document.getElementById('kpiPD').innerText = `PD: ${(m.default_probability_physical * 100).toFixed(3)}%`;
+      document.getElementById('kpiPD').innerText = `PD: ${formatPD(m.default_probability_physical)}`;
+      document.getElementById('kpiPD').title = `Precise PD: ${(m.default_probability_physical * 100).toExponential(4)}% under standard normal Φ(-DD)`;
       document.getElementById('kpiVA').innerText = formatMoneyM(m.asset_value);
       document.getElementById('kpiSigmaA').innerText = `σA: ${(m.asset_volatility * 100).toFixed(1)}%`;
       document.getElementById('kpiSpread').innerText = `${m.credit_spread_bps.toFixed(1)} bps`;
@@ -2594,12 +2610,18 @@
       const stage = document.getElementById('stageBadge');
       const fTier = document.getElementById('forensicTierBadge');
 
+      const isForensicsClean = !manipFlag && (zScore >= 1.80 || !scoresApply);
+
       let tone;
       if (dd < 1.0 || (scoresApply && zScore < 1.10)) {
         tone = 'bad';
         badge.innerText = 'Band 7 (Very High)';
         title.innerText = 'INDICATIVE: VERY HIGH RISK — WORKOUT REVIEW';
-        desc.innerText = 'Severe default hazard; latent assets approach debt barrier with critically impaired equity cushion.';
+        if (isForensicsClean) {
+          desc.innerText = `Severe structural default hazard: market equity collapse or leverage compresses assets toward debt barrier (DD ${dd.toFixed(2)}σ). Forensic accounting remains clean (M-Score ${mScore.toFixed(2)}), confirming distress is driven by market insolvency rather than financial reporting fraud.`;
+        } else {
+          desc.innerText = 'Severe default hazard; latent assets approach debt barrier with critically impaired equity cushion and forensic distress signals.';
+        }
         stage.innerText = 'Stage 3 (Credit Impaired)';
         fTier.innerText = 'Critical Risk';
       } else if (manipFlag || dd < 2.0 || cccAlert) {
@@ -2632,6 +2654,23 @@
           setTone(fTier, { Low: 'good', Medium: 'warn', High: 'bad', Critical: 'bad' }[tier] || 'warn');
         }
       }
+
+      // Risk Driver Reconciliation Callout
+      const reconNote = document.getElementById('riskReconciliationNote');
+      const reconText = document.getElementById('riskReconciliationText');
+      if (reconNote && reconText) {
+        if (tone === 'bad' && isForensicsClean) {
+          reconNote.classList.remove('hidden');
+          reconText.innerHTML = `<strong>Why Stage 3 / Band 7 despite clean forensics?</strong> This company faces real-time structural credit distress (Distance-to-Default <strong>${dd.toFixed(2)}σ</strong>, high debt-to-equity leverage, or elevated asset volatility) pushing latent enterprise assets near the default barrier. Meanwhile, historical accounting statements are clean (Beneish M-Score of <strong>${mScore.toFixed(2)}</strong> indicates no earnings manipulation). Forensic accounting tests audit integrity; structural Merton models evaluate economic solvency.`;
+        } else if (manipFlag && dd > 3.0) {
+          reconNote.classList.remove('hidden');
+          reconText.innerHTML = `<strong>Why Elevated Risk despite strong equity buffer?</strong> Although market Distance-to-Default is <strong>${dd.toFixed(2)}σ</strong>, the Beneish model detected potential earnings manipulation (M-Score <strong>${mScore.toFixed(2)} &gt; -1.78</strong>). Creditors must apply enhanced surveillance as reported financial buffers may be overstated.`;
+        } else {
+          reconNote.classList.add('hidden');
+          reconText.innerText = '';
+        }
+      }
+
       setStage(STAGE_BY_TONE[tone]);
       document.getElementById('directiveIcon').innerText = DIRECTIVE_ICONS[tone];
 
@@ -2656,7 +2695,7 @@
         asset_volatility: sigmaA,
         default_barrier: D,
         distance_to_default_physical: Math.max(dd, 0.05),
-        default_probability_physical: Math.min(Math.max(pd, 0.00001), 0.999),
+        default_probability_physical: pd,
         credit_spread_bps: Math.min(Math.max(spread, 1.0), 5000)
       }, simManip, simCCC);
     }
@@ -2698,6 +2737,11 @@
       const payload = {
         company_name: company,
         ticker: ticker,
+        equity_market_cap: E,
+        equity_volatility: eqVol,
+        short_term_debt: std,
+        long_term_debt: ltd,
+        risk_free_rate: r,
         merton_input: {
           equity_value: E,
           equity_volatility: eqVol,
@@ -2733,6 +2777,7 @@
         document.body.appendChild(a);
         a.click();
         window.URL.revokeObjectURL(url);
+        showSnackbar(`Underwriting Memo PDF downloaded for ${ticker}.`);
       } catch (err) {
         showSnackbar('Could not compile PDF memo. Verify backend is running.');
       } finally {
