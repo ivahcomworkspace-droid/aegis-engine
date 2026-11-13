@@ -2,7 +2,7 @@
 
 [![Live Web Terminal](https://img.shields.io/badge/Live%20Demo-Render-00c7b7?style=for-the-badge&logo=render&logoColor=white)](https://aegis-engine-s96v.onrender.com)
 [![OpenAPI Docs](https://img.shields.io/badge/API%20Docs-FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://aegis-engine-s96v.onrender.com/docs)
-[![Pytest Suite](https://img.shields.io/badge/Tests-107%20Passed-brightgreen?style=for-the-badge)](tests/)
+[![Pytest Suite](https://img.shields.io/badge/Tests-110%20Passed-brightgreen?style=for-the-badge)](tests/)
 
 > **Live Production Terminal:** [https://aegis-engine-s96v.onrender.com](https://aegis-engine-s96v.onrender.com)  
 > **Interactive Swagger API:** [https://aegis-engine-s96v.onrender.com/docs](https://aegis-engine-s96v.onrender.com/docs)
@@ -151,7 +151,7 @@ aegis_engine/
 ├── tests/
 │   ├── __init__.py
 │   ├── conftest.py           # Pytest root configuration
-│   ├── test_engine.py        # 69 deterministic unit, numerical & integration tests
+│   ├── test_engine.py        # 72 deterministic unit, numerical & integration tests
 │   └── test_market_data.py   # 38 offline tests for live borrower data, company list and financial-sector handling
 ├── .env.example              # Settings for live data (copy to .env, which git ignores)
 ├── Dockerfile                # Multi-stage production container build (python:3.11-slim)
