@@ -3,7 +3,9 @@ Aegis Perimeter Defense: Pydantic v2 Strict Validation Models.
 Enforces double-entry balance sheet identities, volatility bounds, and physical constraints.
 """
 
-from typing import Optional, List, Dict, Any
+from enum import Enum
+from typing import Optional, List, Dict, Any, Union
+from datetime import datetime, timezone
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -360,14 +362,84 @@ class ComprehensiveCreditRequest(BaseModel):
         return self
 
 
-class ComprehensiveCreditAssessment(BaseModel):
-    company_name: str
-    ticker: Optional[str] = None
-    timestamp: str
-    merton: MertonOutput
-    forensics: ForensicAnalysisResult
-    vasicek: VasicekOutput
-    ifrs9_ecl: ECLResult
-    composite_rating: str = Field(..., description="Institutional credit rating (e.g. AAA, AA, A, BBB, BB, B, CCC, D)")
-    recommendation: str = Field(..., description="Institutional credit committee underwriting directive")
-    executive_summary: str = Field(..., description="Comprehensive risk appraisal memo text")
+class AegisInternalRiskBand(str, Enum):
+    BAND_1 = "Band 1 (Minimal Credit Risk)"
+    BAND_2 = "Band 2 (Low Credit Risk)"
+    BAND_3 = "Band 3 (Moderate Credit Risk)"
+    BAND_4 = "Band 4 (Acceptable / Monitored)"
+    BAND_5 = "Band 5 (Special Mention / Elevated)"
+    BAND_6 = "Band 6 (High Risk / Substandard)"
+    BAND_7 = "Band 7 (Impaired / Default Risk)"
+
+
+DEFAULT_REGULATORY_DISCLAIMER = (
+    "Aegis internal risk bands and default metrics are uncalibrated quantitative model outputs "
+    "derived from mathematical simplifications. They do not constitute credit ratings from an NRSRO "
+    "or formalized credit committee approvals."
+)
+
+
+class ComprehensiveCreditResponse(BaseModel):
+    ticker: Optional[str] = Field(default=None, description="Borrower equity ticker / identifier")
+    company_name: str = Field(..., description="Legal corporate borrower name")
+    internal_risk_band: str = Field(
+        ...,
+        description="Aegis model-implied proprietary risk band (Band 1 through Band 7)"
+    )
+    indicative_stance: str = Field(
+        ...,
+        description="Non-binding underwriting posture (e.g., INDICATIVE: LOW RISK / MONITOR)"
+    )
+    # Retained for backwards-compatibility; mapped directly to internal_risk_band
+    credit_rating: str = Field(
+        ...,
+        description="Internal model risk band (formerly credit rating)"
+    )
+    recommendation: str = Field(
+        ...,
+        description="Indicative stance (formerly binary recommendation)"
+    )
+    regulatory_disclaimer: str = Field(
+        default=DEFAULT_REGULATORY_DISCLAIMER,
+        description="Model output screening disclaimer (not a credit rating or investment advice)"
+    )
+    merton: Union[MertonOutput, Dict[str, Any]]
+    forensics: Union[ForensicAnalysisResult, Dict[str, Any]]
+    regulatory_capital: Union[VasicekOutput, Dict[str, Any]]
+    ifrs9_ecl: Union[ECLResult, Dict[str, Any]]
+
+    # Backwards compatibility fields for legacy clients, tests, and memo generator
+    composite_rating: Optional[str] = Field(
+        default=None,
+        description="Legacy alias for internal_risk_band"
+    )
+    vasicek: Optional[Union[VasicekOutput, Dict[str, Any]]] = Field(
+        default=None,
+        description="Legacy alias for regulatory_capital"
+    )
+    timestamp: str = Field(
+        default_factory=lambda: datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+        description="Evaluation UTC timestamp"
+    )
+    executive_summary: Optional[str] = Field(
+        default=None,
+        description="Quantitative risk appraisal narrative"
+    )
+
+    @model_validator(mode='after')
+    def sync_backwards_compatibility(self) -> 'ComprehensiveCreditResponse':
+        if not self.credit_rating:
+            self.credit_rating = self.internal_risk_band
+        if not self.composite_rating:
+            self.composite_rating = self.internal_risk_band
+        if not self.recommendation:
+            self.recommendation = self.indicative_stance
+        if self.vasicek is None and self.regulatory_capital is not None:
+            self.vasicek = self.regulatory_capital
+        elif self.regulatory_capital is None and self.vasicek is not None:
+            self.regulatory_capital = self.vasicek
+        return self
+
+
+# Backwards compatibility alias
+ComprehensiveCreditAssessment = ComprehensiveCreditResponse

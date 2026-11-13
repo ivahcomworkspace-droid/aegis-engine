@@ -24,6 +24,9 @@ try:
         VasicekInput,
         IFRS9StageInput,
         ComprehensiveCreditRequest,
+        ComprehensiveCreditResponse,
+        AegisInternalRiskBand,
+        DEFAULT_REGULATORY_DISCLAIMER,
     )
     from aegis_engine.core.merton import (
         solve_merton,
@@ -64,6 +67,9 @@ except ModuleNotFoundError:
         VasicekInput,
         IFRS9StageInput,
         ComprehensiveCreditRequest,
+        ComprehensiveCreditResponse,
+        AegisInternalRiskBand,
+        DEFAULT_REGULATORY_DISCLAIMER,
     )
     from core.merton import (
         solve_merton,
@@ -829,7 +835,10 @@ def test_api_comprehensive_assessment(clean_forensic_input):
     assert response.status_code == 200
     data = response.json()
     assert data["company_name"] == "Apex Industrial Corp"
-    assert data["composite_rating"] in ["AAA", "AA", "A", "BBB", "BB", "B", "CCC/D"]
+    assert data["internal_risk_band"] in [b.value for b in AegisInternalRiskBand]
+    assert data["indicative_stance"].startswith("INDICATIVE:")
+    assert data["credit_rating"] == data["internal_risk_band"]
+    assert "regulatory_disclaimer" in data
     assert "recommendation" in data
     assert "executive_summary" in data
 
@@ -1217,6 +1226,111 @@ def test_api_comprehensive_assessment_balance_sheet_rejection():
     assert "Accounting Identity Failure" in response.text
 
 
+def test_ead_scaling_preservation():
+    """Verify Fix A1: ead reflects explicit loan_exposure without being clamped to 100,000.0 floor."""
+    payload = {
+        "ticker": "TECH",
+        "company_name": "Scale Test Corp",
+        "equity_market_cap": 500.0,
+        "equity_volatility": 0.25,
+        "short_term_debt": 20.0,
+        "long_term_debt": 40.0,
+        "total_assets": 800.0,
+        "total_liabilities": 200.0,
+        "book_value_equity": 600.0,
+        "working_capital": 100.0,
+        "retained_earnings": 200.0,
+        "ebit": 100.0,
+        "loan_exposure": 150.0,
+        "loan_tenor_years": 5
+    }
+    response = client.post("/credit/comprehensive", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    ecl = data["ifrs9_ecl"]
+    # Check that initial EAD schedule reflects 150.0 and NOT 100,000.0
+    assert ecl["period_schedules"][0]["ead"] == pytest.approx(150.0, rel=1e-3)
+    # Total ECL must scale to millions ($150.0M), NOT hundreds of millions / billions
+    assert ecl["total_ecl"] < 50.0
+
+
+# Backward compatibility alias
+test_ead_scaling_preservation_no_floor = test_ead_scaling_preservation
+
+
+def test_internal_risk_band_replaces_agency_ratings():
+    """Verify Fix A4: outputs AegisInternalRiskBand, indicative stance, and model disclaimer."""
+    # 1. High quality firm -> Band 1 or Band 2
+    payload_prime = {
+        "ticker": "PRIME",
+        "company_name": "Prime Fortress Corp",
+        "equity_market_cap": 2_000_000.0,
+        "equity_volatility": 0.20,
+        "short_term_debt": 1000.0,
+        "long_term_debt": 5000.0,
+        "total_assets": 500_000.0,
+        "total_liabilities": 100_000.0,
+        "book_value_equity": 400_000.0,
+        "working_capital": 50_000.0,
+        "retained_earnings": 100_000.0,
+        "ebit": 50_000.0,
+        "loan_exposure": 500.0
+    }
+    res_prime = client.post("/credit/comprehensive", json=payload_prime)
+    assert res_prime.status_code == 200
+    data_prime = res_prime.json()
+    assert data_prime["internal_risk_band"] in [
+        AegisInternalRiskBand.BAND_1.value,
+        AegisInternalRiskBand.BAND_2.value,
+    ]
+    assert data_prime["internal_risk_band"].startswith("Band ")
+    assert "INDICATIVE: MINIMAL RISK" in data_prime["indicative_stance"] or "INDICATIVE: LOW RISK" in data_prime["indicative_stance"]
+    assert data_prime["credit_rating"] == data_prime["internal_risk_band"]
+    assert data_prime["recommendation"] == data_prime["indicative_stance"]
+    for legacy_rating in ["AAA", "AA", "A", "BBB", "BB", "B", "CCC", "D"]:
+        assert data_prime["credit_rating"] != legacy_rating
+    assert "APPROVE" not in data_prime["recommendation"]
+    assert "REJECT" not in data_prime["recommendation"]
+    assert data_prime["regulatory_disclaimer"] == (
+        "Aegis internal risk bands and default metrics are uncalibrated quantitative model outputs "
+        "derived from mathematical simplifications. They do not constitute credit ratings from an NRSRO "
+        "or formalized credit committee approvals."
+    )
+
+    # 2. Distressed firm -> Band 6 or Band 7
+    payload_distress = {
+        "ticker": "DISTRESS",
+        "company_name": "Distressed Energy Corp",
+        "equity_market_cap": 50.0,
+        "equity_volatility": 1.20,
+        "short_term_debt": 400.0,
+        "long_term_debt": 400.0,
+        "total_assets": 1000.0,
+        "total_liabilities": 950.0,
+        "book_value_equity": 50.0,
+        "working_capital": -100.0,
+        "retained_earnings": -300.0,
+        "ebit": -50.0,
+        "loan_exposure": 200.0,
+        "days_past_due": 95
+    }
+    res_distress = client.post("/credit/comprehensive", json=payload_distress)
+    assert res_distress.status_code == 200
+    data_distress = res_distress.json()
+    assert data_distress["internal_risk_band"] in [
+        AegisInternalRiskBand.BAND_6.value,
+        AegisInternalRiskBand.BAND_7.value,
+    ]
+    assert data_distress["internal_risk_band"].startswith("Band ")
+    assert "INDICATIVE: VERY HIGH RISK" in data_distress["indicative_stance"] or "INDICATIVE: HIGH RISK" in data_distress["indicative_stance"]
+    assert "APPROVE" not in data_distress["recommendation"]
+    assert "REJECT" not in data_distress["recommendation"]
+
+
+# Backward compatibility alias
+test_internal_risk_band_classification_and_disclaimer = test_internal_risk_band_replaces_agency_ratings
+
+
 # =====================================================================
 # 5. HISTORICAL CASE STUDY EMPIRICAL BACKTEST TESTS
 # =====================================================================
@@ -1292,9 +1406,9 @@ def test_case_study_svb_distress_backtest():
     assert ecl_res["ecl_percentage_of_ead"] > 18.0
 
 
-def test_case_study_msft_aaa_fortress_benchmark():
+def test_case_study_msft_fortress_benchmark():
     """
-    Deterministic verification of Microsoft Corporation (MSFT) AAA sovereign-equivalent fortress benchmark.
+    Deterministic verification of Microsoft Corporation (MSFT) sovereign-equivalent benchmark (Band 1).
     Validates extreme solvency buffer (DD > 6.20 sigma), zero fair credit spread (0.0 bps),
     pristine forensic M-score (is_manipulator is False), Altman Z'' in Safe Zone, and Stage 1 IFRS 9 staging.
     """
@@ -1313,7 +1427,7 @@ def test_case_study_msft_aaa_fortress_benchmark():
     assert m_res["default_barrier"] == 26200.0
     assert m_res["asset_value"] >= 2_400_000.0
     assert 0.20 <= m_res["asset_volatility"] <= 0.25
-    assert m_res["distance_to_default"] > 6.20  # AAA sovereign-equivalent boundary
+    assert m_res["distance_to_default"] > 6.20  # Band 1 sovereign-equivalent boundary
     assert m_res["physical_default_prob"] < 0.0001
     assert abs(m_res["implied_credit_spread_bps"]) < 1.0  # Zero spread premium
     assert m_res["leverage_ratio"] < 0.02

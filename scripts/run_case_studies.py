@@ -3,7 +3,7 @@ Aegis Institutional Case Study Reproducibility Runner.
 Executes historical corporate balance sheet data through the quantitative engine.
 Reproduces:
 1. Silicon Valley Bank (SIVB) - Q4 2022 Pre-Collapse Structural Distress & Forensic Audit
-2. Microsoft Corporation (MSFT) - AAA Fortress Sovereign-Equivalent Benchmark
+2. Microsoft Corporation (MSFT) - Sovereign-Equivalent Benchmark (Band 1)
 """
 
 import os
@@ -41,7 +41,7 @@ def run_svb_backtest():
     print(f"  Distance-to-Default (DD):      {res['distance_to_default']:.2f} sigma")
     print(f"  Physical Default Prob (PD):    {res['physical_default_prob']*100:.2f}%")
     print(f"  Fair Credit Spread:            {res['implied_credit_spread_bps']:.1f} bps")
-    print(f"  Mandate Verdict:               {'REJECT / DISTRESS' if res['distance_to_default'] < 1.5 else 'REVIEW'}")
+    print(f"  Mandate Verdict:               {'BAND 7 (VERY HIGH RISK)' if res['distance_to_default'] < 1.5 else 'REVIEW'}")
 
     # 2. Forensic Accounting Diagnostic (Beneish M-Score & Altman Z'')
     # SVB 2022 disclosures: unhedged HTM securities and deposit outflow leverage distortion
@@ -89,12 +89,12 @@ def run_svb_backtest():
     print(f"  Assigned Staging:              {ecl_res['stage_name']}")
     print(f"  Lifetime ECL Allowance:        ${ecl_res['total_ecl']:,.0f}")
     print(f"  ECL Provisioning % of EAD:     {ecl_res['ecl_percentage_of_ead']:.2f}%")
-    print(f"  Executive Directive:           REJECT / NEAR-TERM REORGANIZATION (6 Mo. Pre-Receivership)")
+    print(f"  Executive Directive:           BAND 7 (VERY HIGH RISK) / WORKOUT (6 Mo. Pre-Receivership)")
 
 
 def run_msft_benchmark():
     print("\n" + "=" * 70)
-    print("BACKTEST 2: MICROSOFT CORP (MSFT) - AAA FORTRESS BENCHMARK")
+    print("BACKTEST 2: MICROSOFT CORP (MSFT) - SOVEREIGN-EQUIVALENT BENCHMARK")
     print("=" * 70)
 
     # 1. Structural Merton Inversion
@@ -116,7 +116,7 @@ def run_msft_benchmark():
     print(f"  Distance-to-Default (DD):      {res['distance_to_default']:.2f} sigma")
     print(f"  Physical Default Prob (PD):    {res['physical_default_prob']*100:.4f}%")
     print(f"  Fair Credit Spread:            {res['implied_credit_spread_bps']:.1f} bps")
-    print(f"  Mandate Verdict:               {'APPROVE / AAA' if res['distance_to_default'] > 4.5 else 'REVIEW'}")
+    print(f"  Mandate Verdict:               {'BAND 1 (MINIMAL RISK)' if res['distance_to_default'] > 4.5 else 'REVIEW'}")
 
     # 2. Forensic Accounting Diagnostic (Beneish M-Score & Altman Z'')
     beneish_res = calculate_beneish_m_score(
@@ -160,7 +160,7 @@ def run_msft_benchmark():
     print(f"  Assigned Staging:              {ecl_res['stage_name']}")
     print(f"  12-Month ECL Allowance:        ${ecl_res['total_ecl']:,.0f}")
     print(f"  ECL Provisioning % of EAD:     {ecl_res['ecl_percentage_of_ead']:.4f}%")
-    print(f"  Executive Directive:           APPROVE / AAA UNCONDITIONAL DIRECTIVE")
+    print(f"  Executive Directive:           BAND 1 (MINIMAL RISK) / PRIME SOLVENCY")
 
 
 if __name__ == "__main__":

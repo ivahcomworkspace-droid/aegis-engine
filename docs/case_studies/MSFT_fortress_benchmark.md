@@ -1,15 +1,17 @@
-# Quantitative Benchmark: Microsoft Corporation (MSFT) — The Sovereign-Equivalent AAA Fortress
+> **Disclaimer:** Model output for screening purposes only. Not a credit rating, credit opinion or investment advice.
+
+# Quantitative Benchmark: Microsoft Corporation (MSFT) — Sovereign-Equivalent Fortress Benchmark
 
 **Target Entity:** Microsoft Corporation (NASDAQ: MSFT)  
 **Evaluation Horizon:** FY 2022 / 2023 Annual Disclosure Benchmark  
 **Quantitative Mandate:** Structural Solvency Baseline, Forensic Accruals Verification, and IFRS 9 Stage 1 Calibration  
-**Final Engine Verdict:** **APPROVE / AAA UNCONDITIONAL DIRECTIVE (STAGE 1 PERFORMING)**
+**Final Engine Verdict:** **BAND 1 (MINIMAL RISK) / PRIME SOLVENCY (STAGE 1 PERFORMING)**
 
 ---
 
 ## 1. Executive Summary & Institutional Purpose
 
-Microsoft Corporation represents the gold standard of institutional creditworthiness: one of only two U.S. corporations maintaining a **pristine AAA rating from both Moody's (Aaa) and S&P (AAA)**—rated higher than many G7 sovereign governments.
+Microsoft Corporation represents the gold standard of institutional creditworthiness: maintaining pristine balance sheet strength rated higher than many G7 sovereign governments.
 
 In the **Aegis Credit Risk Architecture**, MSFT serves as the **empirical sovereign-equivalent anchor**:
 - The theoretical ceiling against which all corporate distance-to-default and asset volatility metrics are calibrated.
@@ -134,9 +136,9 @@ $$\text{ECL} = \sum_{t=1}^T \frac{\text{PD}_t^* \times \text{LGD}_t \times \text
                       AEGIS CREDIT RISK UNDERWRITING DIRECTIVE
 ========================================================================================
 BORROWER ENTITY:           MICROSOFT CORPORATION (NASDAQ: MSFT)
-BENCHMARK CATEGORY:        PRIME AAA / SOVEREIGN-EQUIVALENT ANCHOR
-CREDIT RATING MANDATE:     AAA (PRISTINE SOLVENCY PROFILE)
-COMMITTEE DIRECTIVE:       APPROVE / UNCONDITIONAL UNDERWRITING DIRECTIVE
+BENCHMARK CATEGORY:        PRIME SOVEREIGN-EQUIVALENT ANCHOR
+INTERNAL RISK BAND:        BAND 1 (MINIMAL RISK)
+INDICATIVE STANCE:         INDICATIVE: MINIMAL RISK / SUPERIOR CAPACITY
 COVENANT REQUIREMENTS:     ZERO RESTRICTIVE FINANCIAL COVENANTS; NEGATIVE PLEDGE ONLY
 IFRS 9 PROVISIONING:       STAGE 1 (12-MONTH ECL: $2.02M / 0.004% EAD)
 ========================================================================================

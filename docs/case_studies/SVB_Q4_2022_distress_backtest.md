@@ -1,11 +1,13 @@
 > Under review: Beneish result and related figures are being recomputed after a coefficient correction. Do not rely on the M-score reported here.
+>
+> **Disclaimer:** Model output for screening purposes only. Not a credit rating, credit opinion or investment advice.
 
 # Empirical Backtest: Silicon Valley Bank (SIVB) — Q4 2022 Pre-Insolvency Forensic Audit
 
 **Target Entity:** SVB Financial Group (NASDAQ: SIVB)  
 **Evaluation Horizon:** Q4 2022 (As of December 31, 2022 disclosures, ~70 days prior to FDIC receivership on March 10, 2023)  
 **Quantitative Mandate:** Institutional Structural Credit Inversion, Forensic Accruals Audit, and IFRS 9 Multi-Period Staging  
-**Final Engine Verdict:** **REJECT / NEAR-TERM REORGANIZATION (STAGE 3 IMPAIRED)**
+**Final Engine Verdict:** **BAND 7 (VERY HIGH RISK) / NEAR-TERM REORGANIZATION (STAGE 3 WORKOUT)**
 
 ---
 
@@ -146,8 +148,8 @@ $$\text{ECL} = \sum_{t=1}^T \frac{\text{PD}_t^* \times \text{LGD}_t \times \text
 ========================================================================================
 BORROWER ENTITY:           SVB FINANCIAL GROUP (NASDAQ: SIVB)
 EVALUATION DATE:           DECEMBER 31, 2022 (Q4 DISCLOSURES)
-CREDIT RATING MANDATE:     CCC / IMMINENT DEFAULT ARBITRAGE (VS MOODY'S A1)
-COMMITTEE DIRECTIVE:       REJECT / IMMEDIATE LIQUIDATION & HEDGING OF EXPOSURES
+INTERNAL RISK BAND:        BAND 7 (VERY HIGH RISK)
+INDICATIVE STANCE:         INDICATIVE: VERY HIGH RISK / WORKOUT REVIEW
 IFRS 9 PROVISIONING:       STAGE 3 LIFETIME PROVISION ($19,086M / 19.09% EAD)
 ========================================================================================
 ```
@@ -155,5 +157,5 @@ IFRS 9 PROVISIONING:       STAGE 3 LIFETIME PROVISION ($19,086M / 19.09% EAD)
 ### Forensic Investigator Summary Bulletins:
 1. **Unhedged Duration Mismatch:** HTM portfolio market-value losses exceeded $\$15\text{B}$, fully wiping out the reported Tangible Common Equity ($\$11.8\text{B}$).
 2. **Deposit Run Velocity:** Short-term deposit obligations ($\$85\text{B}$) concentrated in venture capital tech clients with high correlation of withdrawal demand.
-3. **Rating Agency Blindspot:** Legacy agencies evaluated historical statutory equity; the Aegis Merton inversion revealed true market asset value ($V_A \approx \$101.8\text{B}$) was dangerously close to the default barrier ($D = \$92.5\text{B}$).
+3. **Rating Agency Blindspot:** Legacy agencies evaluated historical reported book equity; the Aegis Merton inversion revealed true market asset value ($V_A \approx \$101.8\text{B}$) was dangerously close to the default barrier ($D = \$92.5\text{B}$).
 4. **Reproducibility:** Run `py scripts/run_case_studies.py` to regenerate all empirical metrics.

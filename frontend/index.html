@@ -136,10 +136,10 @@
         </div>
         <div>
           <div class="flex items-center space-x-3">
-            <span class="text-xs uppercase tracking-wider font-mono font-bold text-sky-400">Automated Credit Committee Mandate</span>
-            <span id="compositeRatingBadge" class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">AAA</span>
+            <span class="text-xs uppercase tracking-wider font-mono font-bold text-sky-400">Automated Risk Band Mandate</span>
+            <span id="internalRiskBandBadge" class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Band 1 (Minimal)</span>
           </div>
-          <h2 id="directiveTitle" class="text-base font-bold text-white mt-0.5">APPROVE / INVESTMENT GRADE MANDATE</h2>
+          <h2 id="directiveTitle" class="text-base font-bold text-white mt-0.5">INDICATIVE: MINIMAL RISK / SUPERIOR CAPACITY</h2>
           <p id="directiveDesc" class="text-xs text-slate-300 mt-1">Robust solvency buffer with negligible refinancing friction; asset volatility inversion confirms strong enterprise liquidation coverage.</p>
         </div>
       </div>
@@ -405,7 +405,7 @@
   <footer class="glass-panel border-t border-slate-800/80 py-4 px-6 text-xs text-slate-500 font-mono">
     <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
       <div>AEGIS Quantitative Structural Credit & Forensics Engine • Institutional Edition</div>
-      <div>Powered by SciPy Powell Hybrid Solver & Basel Vasicek ASRF</div>
+      <div>Model output for screening purposes only. Not a credit rating, credit opinion or investment advice.</div>
     </div>
   </footer>
 
@@ -716,16 +716,16 @@
 
       // Directive & Rating
       const banner = document.getElementById('underwritingBanner');
-      const badge = document.getElementById('compositeRatingBadge');
+      const badge = document.getElementById('internalRiskBandBadge');
       const title = document.getElementById('directiveTitle');
       const desc = document.getElementById('directiveDesc');
       const stage = document.getElementById('stageBadge');
       const fTier = document.getElementById('forensicTierBadge');
 
       if (m.distance_to_default_physical < 1.0 || zScore < 1.10) {
-        badge.innerText = 'CCC/D';
+        badge.innerText = 'Band 7 (Very High)';
         badge.className = 'text-xs font-mono font-bold px-2 py-0.5 rounded bg-rose-500/20 text-rose-400 border border-rose-500/30';
-        title.innerText = 'REJECT / RESTRUCTURING WATCH';
+        title.innerText = 'INDICATIVE: VERY HIGH RISK — WORKOUT REVIEW';
         desc.innerText = 'Severe default hazard; latent assets approach debt barrier with critically impaired equity cushion.';
         banner.className = 'p-4 rounded-2xl glass-card border-l-4 border-l-rose-500 flex flex-col md:flex-row md:items-center justify-between gap-4';
         stage.innerText = 'Stage 3 (Credit Impaired)';
@@ -733,9 +733,9 @@
         fTier.innerText = 'Critical Risk';
         fTier.className = 'text-xs font-mono font-bold text-rose-400';
       } else if (simManip || m.distance_to_default_physical < 2.0 || simCCC) {
-        badge.innerText = 'BB';
+        badge.innerText = m.distance_to_default_physical < 1.5 ? 'Band 6 (High)' : 'Band 5 (Elevated)';
         badge.className = 'text-xs font-mono font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30';
-        title.innerText = 'UNDERWRITE STRICT COVENANTS / SICR WATCH';
+        title.innerText = 'INDICATIVE: ELEVATED RISK — ENHANCED MONITORING';
         desc.innerText = 'Significant Increase in Credit Risk (SICR) or forensic anomalies detected. Impose negative pledge covenants & quarterly audit verification.';
         banner.className = 'p-4 rounded-2xl glass-card border-l-4 border-l-amber-500 flex flex-col md:flex-row md:items-center justify-between gap-4';
         stage.innerText = 'Stage 2 (Lifetime ECL)';
@@ -743,9 +743,9 @@
         fTier.innerText = simManip ? 'High (Manipulation Flag)' : 'Medium (Elevated CCC)';
         fTier.className = 'text-xs font-mono font-bold text-amber-400';
       } else {
-        badge.innerText = m.distance_to_default_physical > 4.0 ? 'AAA' : 'BBB';
+        badge.innerText = m.distance_to_default_physical > 4.0 ? 'Band 1 (Minimal)' : 'Band 3 (Moderate)';
         badge.className = 'text-xs font-mono font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
-        title.innerText = 'APPROVE / INVESTMENT GRADE MANDATE';
+        title.innerText = 'INDICATIVE: MINIMAL RISK — SUPERIOR CAPACITY';
         desc.innerText = 'Robust solvency buffer with negligible refinancing friction; asset volatility inversion confirms strong enterprise liquidation coverage.';
         banner.className = 'p-4 rounded-2xl glass-card border-l-4 border-l-emerald-500 flex flex-col md:flex-row md:items-center justify-between gap-4';
         stage.innerText = 'Stage 1 (12-Mo ECL)';

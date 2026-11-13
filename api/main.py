@@ -31,6 +31,9 @@ try:
         ECLResult,
         ComprehensiveCreditRequest,
         ComprehensiveCreditAssessment,
+        ComprehensiveCreditResponse,
+        AegisInternalRiskBand,
+        DEFAULT_REGULATORY_DISCLAIMER,
     )
     from aegis_engine.core.merton import solve_merton
     from aegis_engine.core.forensics import calculate_forensics
@@ -53,6 +56,9 @@ except ModuleNotFoundError:
         ECLResult,
         ComprehensiveCreditRequest,
         ComprehensiveCreditAssessment,
+        ComprehensiveCreditResponse,
+        AegisInternalRiskBand,
+        DEFAULT_REGULATORY_DISCLAIMER,
     )
     from core.merton import solve_merton
     from core.forensics import calculate_forensics
@@ -112,7 +118,7 @@ async def solve_merton_endpoint(payload: MertonInput) -> MertonOutput:
     """
     try:
         return await run_in_threadpool(solve_merton, payload)
-    except Exception as e:
+    except (ValueError, ArithmeticError) as e:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Merton solver failure: {str(e)}"
@@ -137,7 +143,7 @@ async def analyze_merton_endpoint(payload: MertonAnalysisRequest) -> MertonOutpu
     )
     try:
         return await run_in_threadpool(solve_merton, m_in)
-    except Exception as e:
+    except (ValueError, ArithmeticError) as e:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Merton analysis failure: {str(e)}"
@@ -155,7 +161,7 @@ async def analyze_forensics_endpoint(payload: ForensicInput) -> ForensicAnalysis
     """
     try:
         return await run_in_threadpool(calculate_forensics, payload)
-    except Exception as e:
+    except (ValueError, ArithmeticError) as e:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Forensics calculation error: {str(e)}"
@@ -205,7 +211,7 @@ async def audit_forensics_endpoint(payload: ForensicAnalysisRequest) -> Forensic
     )
     try:
         return await run_in_threadpool(calculate_forensics, f_in)
-    except Exception as e:
+    except (ValueError, ArithmeticError) as e:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Forensics audit failure: {str(e)}"
@@ -221,7 +227,7 @@ async def vasicek_endpoint(payload: VasicekInput) -> VasicekOutput:
     """
     try:
         return await run_in_threadpool(calculate_vasicek_asrf, payload)
-    except Exception as e:
+    except (ValueError, ArithmeticError) as e:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Vasicek engine failure: {str(e)}"
@@ -237,11 +243,61 @@ async def ecl_endpoint(payload: IFRS9StageInput) -> ECLResult:
     """
     try:
         return await run_in_threadpool(calculate_ifrs9_ecl, payload)
-    except Exception as e:
+    except (ValueError, ArithmeticError) as e:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"IFRS 9 ECL error: {str(e)}"
         )
+
+
+def _compute_internal_risk_band_and_stance(
+    merton_res: MertonOutput,
+    forensics_res: ForensicAnalysisResult,
+    vasicek_res: VasicekOutput,
+    ecl_res: ECLResult,
+) -> Tuple[AegisInternalRiskBand, str, str]:
+    """
+    Underwriting engine synthesis: maps quantitative vectors into Aegis internal risk bands (Band 1 through Band 7)
+    and non-binding indicative underwriting postures.
+    """
+    dd = merton_res.distance_to_default_physical
+    z_double = forensics_res.altman.z_double_prime
+    m_score = forensics_res.beneish.m_score
+    is_manip = forensics_res.beneish.is_manipulator
+    stage = ecl_res.assigned_stage
+
+    # Internal Risk Band determination (Aegis Band 1 - 7)
+    if stage == 3 or dd < 0.5 or z_double < 0.8:
+        band = AegisInternalRiskBand.BAND_7
+        stance = "INDICATIVE: VERY HIGH RISK / WORKOUT — Immediate loss mitigation & restructuring review required."
+    elif dd < 1.2 or z_double < 1.10 or is_manip:
+        band = AegisInternalRiskBand.BAND_6
+        stance = "INDICATIVE: HIGH RISK / WATCHLIST — Strict covenant enforcement & collateral enhancement."
+    elif dd < 2.0 or z_double < 1.80 or stage == 2:
+        band = AegisInternalRiskBand.BAND_5
+        stance = "INDICATIVE: ELEVATED RISK / SURVEILLANCE — Significant increase in credit risk (SICR); quarterly watch."
+    elif dd < 3.2 or z_double < 2.60:
+        band = AegisInternalRiskBand.BAND_4
+        stance = "INDICATIVE: ACCEPTABLE RISK / MONITOR — Standard credit terms with standard negative pledge."
+    elif dd < 4.5:
+        band = AegisInternalRiskBand.BAND_3
+        stance = "INDICATIVE: MODERATE RISK / MONITOR — Favorable repayment capacity with routine annual review."
+    elif dd < 6.0:
+        band = AegisInternalRiskBand.BAND_2
+        stance = "INDICATIVE: LOW RISK / MONITOR — Strong solvency headroom & superior operating stability."
+    else:
+        band = AegisInternalRiskBand.BAND_1
+        stance = "INDICATIVE: MINIMAL RISK / PRIME SOLVENCY — Exceptional asset backing & fortress liquidity coverage."
+
+    summary = (
+        f"Borrower internal credit assessment: {band.value}. "
+        f"Physical Distance-to-Default: {dd:.2f}σ (PD: {merton_res.default_probability_physical:.3%}), "
+        f"Altman Z'': {z_double:.2f} ({forensics_res.altman.zone}), Beneish M-Score: {m_score:.2f} "
+        f"({'MANIPULATION ALERT' if is_manip else 'CLEAN'}). IFRS 9 Staging: {ecl_res.stage_name} "
+        f"with ECL allowance of ${ecl_res.total_ecl:,.2f} ({ecl_res.ecl_percentage_of_ead:.2f}% EAD)."
+    )
+
+    return band, stance, summary
 
 
 def _compute_composite_rating_and_recommendation(
@@ -250,52 +306,14 @@ def _compute_composite_rating_and_recommendation(
     vasicek_res: VasicekOutput,
     ecl_res: ECLResult,
 ) -> Tuple[str, str, str]:
-    """
-    Underwriting engine synthesis: maps quantitative vectors into credit ratings
-    and actionable underwriting directives.
-    """
-    dd = merton_res.distance_to_default_physical
-    z_double = forensics_res.altman.z_double_prime
-    m_score = forensics_res.beneish.m_score
-    is_manip = forensics_res.beneish.is_manipulator
-    stage = ecl_res.assigned_stage
-
-    # Rating determination
-    if stage == 3 or dd < 0.5 or z_double < 0.8:
-        rating = "CCC/D"
-        rec = "REJECT / IMPAIRMENT WATCH: High imminent default probability; trigger debt work-out."
-    elif dd < 1.2 or z_double < 1.10 or is_manip:
-        rating = "B" if not is_manip else "B-"
-        rec = "UNDERWRITE STRICT COVENANTS: High leverage, weak liquidity headroom or forensic red flags."
-    elif dd < 2.0 or z_double < 1.80 or stage == 2:
-        rating = "BB"
-        rec = "MONITOR CLOSELY: Significant increase in credit risk (SICR) observed; quarterly debt covenants required."
-    elif dd < 3.2 or z_double < 2.60:
-        rating = "BBB"
-        rec = "APPROVE / INVESTMENT GRADE: Adequate solvency buffers with standard negative pledge covenants."
-    elif dd < 4.5:
-        rating = "A"
-        rec = "APPROVE / HIGH QUALITY: Strong balance sheet capacity, negligible refinancing headwinds."
-    elif dd < 6.0:
-        rating = "AA"
-        rec = "PRIME QUALITY: Robust enterprise asset coverage, near-zero asset volatility risk."
-    else:
-        rating = "AAA"
-        rec = "SUPERIOR QUALITY: Minimal solvency risk across all macroeconomic stress permutations."
-
-    summary = (
-        f"Borrower exhibits physical Distance-to-Default of {dd:.2f}σ (PD: {merton_res.default_probability_physical:.3%}), "
-        f"Altman Z'' of {z_double:.2f} ({forensics_res.altman.zone}), and Beneish M-Score of {m_score:.2f} "
-        f"({'MANIPULATION ALERT' if is_manip else 'CLEAN'}). Classified under IFRS 9 as {ecl_res.stage_name} "
-        f"with lifetime ECL allowance of ${ecl_res.total_ecl:,.0f}."
-    )
-
-    return rating, rec, summary
+    """Legacy compatibility bridge mapping internal risk bands to string tuple."""
+    band, stance, summary = _compute_internal_risk_band_and_stance(merton_res, forensics_res, vasicek_res, ecl_res)
+    return band.value, stance, summary
 
 
-@app.post("/credit/comprehensive", response_model=ComprehensiveCreditAssessment, tags=["Comprehensive Engine"])
-@app.post("/api/v1/credit/comprehensive", response_model=ComprehensiveCreditAssessment, tags=["Comprehensive Engine"])
-async def comprehensive_assessment_endpoint(req: ComprehensiveCreditRequest) -> ComprehensiveCreditAssessment:
+@app.post("/credit/comprehensive", response_model=ComprehensiveCreditResponse, tags=["Comprehensive Engine"])
+@app.post("/api/v1/credit/comprehensive", response_model=ComprehensiveCreditResponse, tags=["Comprehensive Engine"])
+async def comprehensive_assessment_endpoint(req: ComprehensiveCreditRequest) -> ComprehensiveCreditResponse:
     """
     Unified end-to-end institutional credit assessment combining:
     - Merton structural asset inversion
@@ -394,7 +412,8 @@ async def comprehensive_assessment_endpoint(req: ComprehensiveCreditRequest) -> 
 
     # 4. Vasicek ASRF
     pit_pd = max(min(merton_res.default_probability_physical, 0.999), 0.0001)
-    ead = max(m_in.short_term_debt + m_in.long_term_debt, req.loan_exposure, 100_000.0)
+    # Fix A1: Use explicit loan exposure provided in the request without artificial floor
+    ead = float(req.loan_exposure)
     vasicek_in = VasicekInput(
         pit_pd=pit_pd,
         lgd=m_in.loss_given_default,
@@ -422,20 +441,25 @@ async def comprehensive_assessment_endpoint(req: ComprehensiveCreditRequest) -> 
     )
     ecl_res = await run_in_threadpool(calculate_ifrs9_ecl, ecl_in)
 
-    rating, rec, summary = _compute_composite_rating_and_recommendation(
+    band, stance, summary = _compute_internal_risk_band_and_stance(
         merton_res, forensics_res, vasicek_res, ecl_res
     )
 
-    return ComprehensiveCreditAssessment(
+    return ComprehensiveCreditResponse(
+        ticker=req.ticker or "",
         company_name=req.company_name,
-        ticker=req.ticker,
         timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+        internal_risk_band=band.value,
+        indicative_stance=stance,
+        credit_rating=band.value,
+        recommendation=stance,
+        regulatory_disclaimer=DEFAULT_REGULATORY_DISCLAIMER,
         merton=merton_res,
         forensics=forensics_res,
-        vasicek=vasicek_res,
+        regulatory_capital=vasicek_res,
         ifrs9_ecl=ecl_res,
-        composite_rating=rating,
-        recommendation=rec,
+        composite_rating=band.value,
+        vasicek=vasicek_res,
         executive_summary=summary,
     )
 
