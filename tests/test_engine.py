@@ -50,6 +50,7 @@ try:
         calculate_vasicek_asrf,
         calculate_ecl_staging_and_loss,
         calculate_ifrs9_ecl,
+        calculate_multi_period_ecl,
     )
     from aegis_engine.services.memo_generator import (
         generate_credit_charts,
@@ -93,6 +94,7 @@ except ModuleNotFoundError:
         calculate_vasicek_asrf,
         calculate_ecl_staging_and_loss,
         calculate_ifrs9_ecl,
+        calculate_multi_period_ecl,
     )
     from services.memo_generator import (
         generate_credit_charts,
@@ -244,6 +246,43 @@ def test_merton_call_option_identity():
         - res.default_barrier * np.exp(-0.04 * 1.0) * norm.cdf(res.d2)
     )
     assert abs(reconstructed_E - 120.0) < 1e-2
+
+
+def test_merton_synthetic_round_trip():
+    """
+    Verify Fix Me1 & Me2: Round-trip synthetic test recovering known (V_A, sigma_A)
+    with strict solver convergence and residual norm checks.
+    """
+    true_va = 1000.0
+    true_sa = 0.25
+    D = 400.0
+    r = 0.04
+    T = 1.0
+    sqrt_T = np.sqrt(T)
+
+    d1 = (np.log(true_va / D) + (r + 0.5 * true_sa**2) * T) / (true_sa * sqrt_T)
+    d2 = d1 - true_sa * sqrt_T
+    Phi_d1 = norm.cdf(d1)
+    Phi_d2 = norm.cdf(d2)
+
+    E = true_va * Phi_d1 - D * np.exp(-r * T) * Phi_d2
+    sigma_E = (true_va / E) * Phi_d1 * true_sa
+
+    res = solve_structural_merton(
+        equity_market_cap=E,
+        equity_volatility=sigma_E,
+        short_term_debt=D,
+        long_term_debt=0.0,
+        risk_free_rate=r,
+        asset_drift_mu=r,
+        maturity_years=T
+    )
+
+    assert abs(res["asset_value"] - true_va) < 1e-4
+    assert abs(res["asset_volatility"] - true_sa) < 1e-4
+    assert res["solver_converged"] is True
+    assert res["residual_norm"] < 1e-6
+    assert res["solver_used"] in ["hybr", "trf_fallback"]
 
 
 # =====================================================================
@@ -659,6 +698,33 @@ def test_ifrs9_stage_3_credit_impaired():
     assert res.assigned_stage == 3
     assert "Credit Impaired" in res.stage_name
     assert res.is_lifetime_ecl is True
+    # Fix V1: True discounted LGD * EAD loss allowance under PD = 1.0
+    expected_ecl = (0.65 * 1_000_000.0) / (1.0 + inp.effective_interest_rate)
+    assert res.total_ecl == pytest.approx(expected_ecl, rel=1e-3)
+
+
+def test_ifrs9_stage_3_full_default_lgd_loss():
+    """
+    Verify Fix V1: When loan is Stage 3 (Credit Impaired), default has occurred (PD = 1.0),
+    so loss allowance equals discounted LGD * EAD.
+    """
+    ead = 250_000.0
+    lgd = 0.60
+    discount_rate = 0.05
+    res = calculate_multi_period_ecl(
+        current_pd=0.25,
+        origination_distance_to_default=3.0,
+        current_distance_to_default=0.8,
+        days_past_due=95,
+        is_credit_impaired=True,
+        ead_schedule=[ead, ead * 0.5],
+        lgd_schedule=[lgd, lgd],
+        effective_interest_rate=discount_rate
+    )
+
+    assert res["assigned_stage"] == 3
+    expected_ecl = lgd * ead / (1.0 + discount_rate)
+    assert res["total_ecl"] == pytest.approx(expected_ecl, rel=1e-4)
 
 
 def test_ecl_discounting_and_term_structure():
@@ -738,6 +804,9 @@ def test_ecl_staging_and_loss_raw_numerical():
     )
     assert st3["assigned_stage"] == 3
     assert st3["is_lifetime_ecl"] is True
+    # Fix V1: Discounted LGD * EAD for Stage 3 default (base_lgd=0.65, EIR=0.05)
+    expected_ecl_st3 = (0.65 * 500_000.0) / 1.05
+    assert st3["total_ecl"] == pytest.approx(expected_ecl_st3, rel=1e-3)
 
 
 # =====================================================================

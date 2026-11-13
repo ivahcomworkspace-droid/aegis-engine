@@ -7,7 +7,7 @@ Achieves sub-2ms convergence via SciPy's modified Powell hybrid method ('hybr').
 """
 
 import time
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Any
 import numpy as np
 import scipy.stats as stats
 from scipy.optimize import root
@@ -81,9 +81,23 @@ def solve_structural_merton(
     asset_drift_mu: float,
     maturity_years: float = 1.0,
     recovery_rate: float = 0.40
-) -> Dict[str, float]:
+) -> Dict[str, Any]:
     """
     High-performance institutional solver for latent enterprise assets and default risk.
+
+    Returns dictionary containing:
+    - asset_value: Inverted enterprise asset value V_A
+    - asset_volatility: Inverted enterprise asset volatility sigma_A
+    - distance_to_default: Physical Distance-to-Default (DD) under asset drift mu
+    - physical_default_prob: Physical Probability of Default Phi(-DD)
+    - risk_neutral_default_prob: Risk-neutral Probability of Default Phi(-d2_rn)
+    - implied_credit_spread_bps: Constant-recovery approximate credit spread in bps (-ln(1 - PD*LGD) / T * 10000)
+    - structural_merton_spread_bps: Exact structural Merton credit spread in bps (-1/T * ln(Phi(d2) + (V_A*e^(rT)/D)*Phi(-d1)) * 10000)
+    - leverage_ratio: Default barrier to Asset value ratio (D / V_A)
+    - default_barrier: Merton default barrier D = STD + 0.5 * LTD
+    - solver_converged: True if residual_norm < 1e-4 and V_A >= E - 1e-6
+    - solver_used: Active solver employed ('hybr', 'trf_fallback', or 'zero_debt_exact')
+    - residual_norm: L2 norm of dimensionless system residuals
     """
     E = float(equity_market_cap)
     sigma_E = float(equity_volatility)
@@ -102,8 +116,12 @@ def solve_structural_merton(
             "physical_default_prob": 0.0,
             "risk_neutral_default_prob": 0.0,
             "implied_credit_spread_bps": 0.0,
+            "structural_merton_spread_bps": 0.0,
             "leverage_ratio": 0.0,
-            "default_barrier": 0.0
+            "default_barrier": 0.0,
+            "solver_converged": True,
+            "solver_used": "zero_debt_exact",
+            "residual_norm": 0.0,
         }
 
     # Dynamic starting heuristics
@@ -118,35 +136,90 @@ def solve_structural_merton(
         options={'xtol': 1e-9}
     )
 
-    if not sol.success or sol.x[0] <= 0 or sol.x[1] <= 0:
+    solver_used = "hybr"
+    sol_success = bool(sol.success)
+    solver_message = str(sol.message)
+
+    if not sol.success or sol.x[0] < E - 1e-6 or sol.x[1] <= 0:
         # Fallback to bounded least squares if hybrid solver encounters numerical edge
         from scipy.optimize import least_squares
         res_fb = least_squares(
             fun=lambda x: merton_objective_and_jacobian(x, E, sigma_E, D, r, T)[0],
             x0=np.array([v_a_init, sigma_a_init]),
             jac=lambda x: merton_objective_and_jacobian(x, E, sigma_E, D, r, T)[1],
-            bounds=([E * 0.5, 0.001], [np.inf, 5.0]),
+            bounds=([E, 0.001], [np.inf, 5.0]),
             xtol=1e-8,
             ftol=1e-8
         )
-        if not res_fb.success:
-            raise ArithmeticError(f"Merton solver failed to converge: {sol.message}")
+        solver_used = "trf_fallback"
+        sol_success = bool(res_fb.success)
+        solver_message = str(res_fb.message)
         v_a, sigma_a = float(res_fb.x[0]), float(res_fb.x[1])
     else:
         v_a, sigma_a = float(sol.x[0]), float(sol.x[1])
 
-    # Enforce positivity
-    v_a = max(v_a, E)
-    sigma_a = max(sigma_a, 0.0001)
+    # Recompute dimensionless equation residuals res_vec at (v_a, sigma_a)
+    d1_calc = (np.log(v_a / D) + (r + 0.5 * sigma_a**2) * T) / (sigma_a * sqrt_T)
+    d2_calc = d1_calc - sigma_a * sqrt_T
+    phi_d1_calc = stats.norm.cdf(d1_calc)
+    phi_d2_calc = stats.norm.cdf(d2_calc)
 
+    res_vec = np.array([
+        (v_a * phi_d1_calc - D * np.exp(-r * T) * phi_d2_calc - E) / E,
+        (v_a / E) * phi_d1_calc * sigma_a - sigma_E
+    ], dtype=np.float64)
+    residual_norm = float(np.linalg.norm(res_vec))
+
+    # If hybr gave residual_norm >= 1e-4, try trf_fallback before declaring failure
+    if solver_used == "hybr" and (residual_norm >= 1e-4 or v_a < E - 1e-6):
+        from scipy.optimize import least_squares
+        res_fb = least_squares(
+            fun=lambda x: merton_objective_and_jacobian(x, E, sigma_E, D, r, T)[0],
+            x0=np.array([v_a_init, sigma_a_init]),
+            jac=lambda x: merton_objective_and_jacobian(x, E, sigma_E, D, r, T)[1],
+            bounds=([E, 0.001], [np.inf, 5.0]),
+            xtol=1e-8,
+            ftol=1e-8
+        )
+        solver_used = "trf_fallback"
+        sol_success = bool(res_fb.success)
+        solver_message = str(res_fb.message)
+        v_a, sigma_a = float(res_fb.x[0]), float(res_fb.x[1])
+
+        d1_calc = (np.log(v_a / D) + (r + 0.5 * sigma_a**2) * T) / (sigma_a * sqrt_T)
+        d2_calc = d1_calc - sigma_a * sqrt_T
+        phi_d1_calc = stats.norm.cdf(d1_calc)
+        phi_d2_calc = stats.norm.cdf(d2_calc)
+
+        res_vec = np.array([
+            (v_a * phi_d1_calc - D * np.exp(-r * T) * phi_d2_calc - E) / E,
+            (v_a / E) * phi_d1_calc * sigma_a - sigma_E
+        ], dtype=np.float64)
+        residual_norm = float(np.linalg.norm(res_vec))
+
+    solver_converged = bool(sol_success and residual_norm < 1e-4 and v_a >= E - 1e-6)
+    if not solver_converged:
+        raise ArithmeticError(
+            f"Merton solver ({solver_used}) failed to converge: {solver_message} (residual_norm={residual_norm:.2e})"
+        )
+
+    # Physical Distance-to-Default and default probability under drift mu
     dd_physical = (np.log(v_a / D) + (mu - 0.5 * sigma_a**2) * T) / (sigma_a * sqrt_T)
     pd_physical = float(stats.norm.cdf(-dd_physical))
 
-    dd_rn = (np.log(v_a / D) + (r - 0.5 * sigma_a**2) * T) / (sigma_a * sqrt_T)
-    pd_rn = float(stats.norm.cdf(-dd_rn))
+    # Risk-neutral d1, d2, and default probability
+    d1_rn = (np.log(v_a / D) + (r + 0.5 * sigma_a**2) * T) / (sigma_a * sqrt_T)
+    d2_rn = d1_rn - sigma_a * sqrt_T
+    pd_rn = float(stats.norm.cdf(-d2_rn))
 
+    # Fix Me3: Exact structural Merton credit spread (bps) per Merton (1974)
+    structural_merton_spread_bps = float(
+        -(1.0 / T) * np.log(np.clip(stats.norm.cdf(d2_rn) + (v_a * np.exp(r * T) / D) * stats.norm.cdf(-d1_rn), 1e-15, 1.0)) * 10000.0
+    ) if D > 0.0 else 0.0
+
+    # Constant-recovery approximate spread (bps) retained for backwards compatibility
     lgd = 1.0 - recovery_rate
-    spread_bps = float(- (np.log(max(1e-7, 1.0 - min(pd_rn * lgd, 0.999999))) / T) * 10000.0)
+    approx_spread_bps = float(- (np.log(max(1e-7, 1.0 - min(pd_rn * lgd, 0.999999))) / T) * 10000.0)
 
     return {
         "asset_value": v_a,
@@ -154,9 +227,13 @@ def solve_structural_merton(
         "distance_to_default": float(dd_physical),
         "physical_default_prob": pd_physical,
         "risk_neutral_default_prob": pd_rn,
-        "implied_credit_spread_bps": spread_bps,
+        "implied_credit_spread_bps": approx_spread_bps,
+        "structural_merton_spread_bps": structural_merton_spread_bps,
         "leverage_ratio": float(D / v_a),
-        "default_barrier": D
+        "default_barrier": D,
+        "solver_converged": solver_converged,
+        "solver_used": solver_used,
+        "residual_norm": residual_norm,
     }
 
 
@@ -184,7 +261,10 @@ class MertonSolver:
                 distance_to_default_risk_neutral=99.0,
                 default_probability_risk_neutral=0.0,
                 credit_spread_bps=0.0,
+                structural_merton_spread_bps=0.0,
                 solver_converged=True,
+                solver_used="zero_debt_exact",
+                residual_norm=0.0,
                 solver_message="Asymptotic clamp: Zero debt (D=0)",
                 solver_time_ms=round(elapsed_ms, 3),
                 leverage_ratio=0.0
@@ -223,8 +303,11 @@ class MertonSolver:
             distance_to_default_risk_neutral=round(float(dd_rn), 4),
             default_probability_risk_neutral=round(res["risk_neutral_default_prob"], 6),
             credit_spread_bps=round(res["implied_credit_spread_bps"], 2),
-            solver_converged=True,
-            solver_message="Powell hybrid ('hybr') analytical Jacobian converged",
+            structural_merton_spread_bps=round(res["structural_merton_spread_bps"], 2),
+            solver_converged=bool(res["solver_converged"]),
+            solver_used=str(res["solver_used"]),
+            residual_norm=float(res["residual_norm"]),
+            solver_message=f"Merton solver ({res['solver_used']}) converged (residual_norm={res['residual_norm']:.2e})",
             solver_time_ms=round(elapsed_ms, 3),
             leverage_ratio=round(res["leverage_ratio"], 4)
         )

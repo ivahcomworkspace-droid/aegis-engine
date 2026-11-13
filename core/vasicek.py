@@ -234,37 +234,72 @@ def calculate_ecl_staging_and_loss(
         base_lgd = 0.65 if assigned_stage == 3 else 0.45
         lgd_sched = [base_lgd] * num_periods
 
-    # Hazard rate formulation: S(t) = exp(-lambda * t)
-    lambda_hazard = -np.log(max(1.0 - pd_curr, 1e-7))
+    if assigned_stage == 3:
+        # Fix V1: Under IFRS 9 / CECL, when an asset is Stage 3 (Credit Impaired), default has already occurred (PD = 1.0).
+        # Loss allowance equals the full discounted LGD * EAD for the current default event.
+        ead_0 = float(ead_sched[0])
+        lgd_0 = float(lgd_sched[0])
+        discount_factor = 1.0 / (1.0 + eir)
+        discounted_ecl_0 = lgd_0 * ead_0 * discount_factor
+        total_ecl = discounted_ecl_0
 
-    schedules = []
-    total_ecl = 0.0
-    cumulative_survival = 1.0
+        schedules = [{
+            "period": 1,
+            "marginal_pd": 1.0,
+            "cumulative_pd": 1.0,
+            "survival_probability": 0.0,
+            "ead": round(ead_0, 2),
+            "lgd": round(lgd_0, 4),
+            "discount_factor": round(discount_factor, 6),
+            "discounted_ecl": round(discounted_ecl_0, 2),
+        }]
+        for t in range(2, eval_periods + 1):
+            idx = t - 1
+            ead_t = float(ead_sched[idx])
+            lgd_t = float(lgd_sched[idx])
+            df_t = 1.0 / ((1.0 + eir) ** t)
+            schedules.append({
+                "period": t,
+                "marginal_pd": 0.0,
+                "cumulative_pd": 1.0,
+                "survival_probability": 0.0,
+                "ead": round(ead_t, 2),
+                "lgd": round(lgd_t, 4),
+                "discount_factor": round(df_t, 6),
+                "discounted_ecl": 0.0,
+            })
+    else:
+        # Hazard rate formulation: S(t) = exp(-lambda * t)
+        lambda_hazard = -np.log(max(1.0 - pd_curr, 1e-7))
 
-    for t in range(1, eval_periods + 1):
-        idx = t - 1
-        ead_t = float(ead_sched[idx])
-        lgd_t = float(lgd_sched[idx])
+        schedules = []
+        total_ecl = 0.0
+        cumulative_survival = 1.0
 
-        survival_t = float(np.exp(-lambda_hazard * t))
-        marginal_pd = cumulative_survival - survival_t
-        cumulative_pd = 1.0 - survival_t
-        cumulative_survival = survival_t
+        for t in range(1, eval_periods + 1):
+            idx = t - 1
+            ead_t = float(ead_sched[idx])
+            lgd_t = float(lgd_sched[idx])
 
-        discount_factor = 1.0 / ((1.0 + eir) ** t)
-        discounted_ecl_t = marginal_pd * lgd_t * ead_t * discount_factor
-        total_ecl += discounted_ecl_t
+            survival_t = float(np.exp(-lambda_hazard * t))
+            marginal_pd = cumulative_survival - survival_t
+            cumulative_pd = 1.0 - survival_t
+            cumulative_survival = survival_t
 
-        schedules.append({
-            "period": t,
-            "marginal_pd": round(float(marginal_pd), 6),
-            "cumulative_pd": round(float(cumulative_pd), 6),
-            "survival_probability": round(float(survival_t), 6),
-            "ead": round(float(ead_t), 2),
-            "lgd": round(float(lgd_t), 4),
-            "discount_factor": round(float(discount_factor), 6),
-            "discounted_ecl": round(float(discounted_ecl_t), 2),
-        })
+            discount_factor = 1.0 / ((1.0 + eir) ** t)
+            discounted_ecl_t = marginal_pd * lgd_t * ead_t * discount_factor
+            total_ecl += discounted_ecl_t
+
+            schedules.append({
+                "period": t,
+                "marginal_pd": round(float(marginal_pd), 6),
+                "cumulative_pd": round(float(cumulative_pd), 6),
+                "survival_probability": round(float(survival_t), 6),
+                "ead": round(float(ead_t), 2),
+                "lgd": round(float(lgd_t), 4),
+                "discount_factor": round(float(discount_factor), 6),
+                "discounted_ecl": round(float(discounted_ecl_t), 2),
+            })
 
     initial_ead = float(ead_sched[0])
     ecl_pct = (total_ecl / max(initial_ead, 1e-9)) * 100.0

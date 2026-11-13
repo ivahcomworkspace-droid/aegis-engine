@@ -42,8 +42,11 @@ class MertonOutput(BaseModel):
     distance_to_default_risk_neutral: float = Field(..., description="Risk-Neutral Distance-to-Default (DD_RN)")
     default_probability_risk_neutral: float = Field(..., description="Risk-Neutral Probability of Default (Phi(-DD_RN))")
     credit_spread_bps: float = Field(..., description="Risk-neutral theoretical credit spread in basis points")
+    structural_merton_spread_bps: Optional[float] = Field(default=None, description="Exact structural Merton credit spread in basis points")
     solver_converged: bool = Field(..., description="Whether Powell hybrid solver converged successfully")
     solver_message: str = Field(..., description="Solver exit flag / diagnostics")
+    solver_used: Optional[str] = Field(default=None, description="Solver method used ('hybr', 'trf_fallback', 'zero_debt_exact')")
+    residual_norm: Optional[float] = Field(default=None, description="L2 norm of dimensionless Merton system residuals")
     solver_time_ms: float = Field(..., description="Wall-clock solver time in milliseconds")
     leverage_ratio: float = Field(..., description="Debt barrier to Asset value ratio (D / V_A)")
 
