@@ -37,7 +37,7 @@ def calculate_corporate_asset_correlation(
     rho = 0.12 * (1 - exp(-50 * PD)) / (1 - exp(-50)) + 0.24 * [1 - (1 - exp(-50 * PD)) / (1 - exp(-50))]
     If firm sales are specified between 5M and 50M EUR, applies Basel SME size adjustment:
     Delta rho = -0.04 * (1 - (Sales - 5) / 45)
-    Bound to [0.12, 0.24].
+    Bound to [0.08, 0.24] when SME adjustment is applied (sales <= 50M EUR), else [0.12, 0.24].
     """
     pd_clamped = min(max(float(pd), 1e-6), 0.999999)
     exp_factor = (1.0 - np.exp(-50.0 * pd_clamped)) / (1.0 - np.exp(-50.0))
@@ -48,7 +48,12 @@ def calculate_corporate_asset_correlation(
         sme_adjustment = -0.04 * (1.0 - (sales_clamped - 5.0) / 45.0)
         rho += sme_adjustment
 
-    return float(np.clip(rho, 0.12, 0.24))
+    lower = 0.08 if firm_sales_eur_m is not None else 0.12
+    return float(np.clip(rho, lower, 0.24))
+
+
+calculate_asset_correlation = calculate_corporate_asset_correlation
+calculate_basel_correlation = calculate_corporate_asset_correlation
 
 
 def calculate_vasicek_conditional_pd(pd: float, rho: float, z: float) -> float:

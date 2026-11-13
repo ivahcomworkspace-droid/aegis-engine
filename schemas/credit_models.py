@@ -99,13 +99,13 @@ class ForensicAnalysisRequest(BaseModel):
     @model_validator(mode='after')
     def validate_double_entry_reconciliation(self):
         implied_equity = self.total_assets_t0 - self.total_liabilities_t0
-        tolerance = 0.05 * self.total_assets_t0
+        tolerance = 0.01 * self.total_assets_t0
         if abs(implied_equity - self.book_value_equity_t0) > tolerance:
             raise ValueError(
                 f"Double-Entry Identity Violation: Total Assets ({self.total_assets_t0}) - "
                 f"Total Liabilities ({self.total_liabilities_t0}) = {implied_equity:.2f}, "
                 f"which does not reconcile with Book Equity ({self.book_value_equity_t0}) "
-                f"within 5% tolerance."
+                f"within 1% tolerance."
             )
         return self
 
@@ -115,6 +115,10 @@ class ForensicInput(BaseModel):
     Institutional balance sheet and financial statement data across period t and t-1.
     Enforces balance sheet sanity checks and identity relations.
     """
+    # Financial institution domain guard
+    is_financial_institution: bool = Field(default=False, description="Flag indicating borrower is a bank, insurer, or financial institution")
+    domain_warning: Optional[str] = Field(default=None, description="Domain limitation notice")
+
     # Current period (t)
     sales_t: float = Field(..., gt=0, description="Revenue / Sales in period t")
     cogs_t: float = Field(..., ge=0, description="Cost of Goods Sold in period t")
@@ -165,6 +169,22 @@ class ForensicInput(BaseModel):
             raise ValueError(
                 f"Prior period current assets ({self.current_assets_t_minus_1}) exceeds total assets ({self.total_assets_t_minus_1})"
             )
+
+        # Fix S2: Balance sheet accounting identity validator (tolerance <= 0.01 * Assets)
+        if (
+            self.total_assets_t is not None
+            and self.total_liabilities_t is not None
+            and self.book_value_equity_t is not None
+        ):
+            implied_equity = self.total_assets_t - self.total_liabilities_t
+            tolerance = 0.01 * self.total_assets_t
+            if abs(implied_equity - self.book_value_equity_t) > tolerance:
+                raise ValueError(
+                    f"Balance-Sheet Identity Violation: Total Assets ({self.total_assets_t}) - "
+                    f"Total Liabilities ({self.total_liabilities_t}) = {implied_equity:.2f}, "
+                    f"which does not reconcile with Book Equity ({self.book_value_equity_t}) "
+                    f"within 1% tolerance."
+                )
         return self
 
 
@@ -178,9 +198,12 @@ class BeneishResult(BaseModel):
     lvgi: float = Field(..., description="Leverage Index")
     tata: float = Field(..., description="Total Accruals to Total Assets")
     m_score: float = Field(..., description="Beneish 8-Factor M-Score")
-    manipulation_probability: float = Field(..., description="Probabilistic likelihood of manipulation Phi(M)")
+    m_score_probit_index: float = Field(..., description="Cumulative normal probit index Phi(M)")
+    manipulation_probability: float = Field(..., description="Deprecated alias for m_score_probit_index")
     is_manipulator: bool = Field(..., description="True if M-Score > -1.78 (active red flag threshold)")
     red_flags: List[str] = Field(default_factory=list, description="Specific sub-indices indicating forensic anomalies")
+    domain_warning: Optional[str] = Field(default=None, description="Domain limitation notice")
+    data_quality_flags: List[str] = Field(default_factory=list, description="Explicit warnings for missing or non-computable metrics")
 
 
 class AltmanResult(BaseModel):
@@ -191,6 +214,7 @@ class AltmanResult(BaseModel):
     z_double_prime: float = Field(..., description="Altman Z''-Score (Services & Emerging Markets)")
     zone: str = Field(..., description="Classification Zone: Safe, Grey, or Distress")
     distress_assessment: str = Field(..., description="Executive interpretation of insolvency likelihood")
+    domain_warning: Optional[str] = Field(default=None, description="Domain limitation notice")
 
 
 class CCCResult(BaseModel):
@@ -206,6 +230,7 @@ class CCCResult(BaseModel):
     delta_gross_margin: float = Field(..., description="Change in Gross Profit Margin (percentage points)")
     warning_triggered: bool = Field(..., description="Alert if Delta CCC > +20 days while Gross Margin is static")
     alert_message: Optional[str] = Field(default=None, description="Actionable working capital stress diagnostic")
+    domain_warning: Optional[str] = Field(default=None, description="Domain limitation notice")
 
 
 class ForensicAnalysisResult(BaseModel):
@@ -214,6 +239,8 @@ class ForensicAnalysisResult(BaseModel):
     ccc: CCCResult
     composite_forensic_risk: str = Field(..., description="Composite risk tier: Low, Medium, High, or Critical")
     summary_findings: List[str] = Field(default_factory=list, description="Forensic credit investigator bullet findings")
+    is_financial_institution: bool = Field(default=False, description="Whether entity is a financial institution")
+    domain_warning: Optional[str] = Field(default=None, description="Domain limitation notice")
 
 
 class VasicekInput(BaseModel):
@@ -312,6 +339,7 @@ class ComprehensiveCreditRequest(BaseModel):
     # Forensic & Stress Simulation Flags
     simulate_beneish_manipulation: bool = Field(False)
     simulate_working_capital_stress: bool = Field(False)
+    is_financial_institution: bool = Field(default=False, description="Flag indicating borrower is a bank, insurer, or financial institution")
 
     # Optional nested wrappers for backward compatibility
     merton_input: Optional[MertonInput] = Field(default=None)
@@ -340,6 +368,7 @@ class ComprehensiveCreditRequest(BaseModel):
                 data.setdefault("total_assets", f_in.get("total_assets_t"))
                 data.setdefault("total_liabilities", f_in.get("total_liabilities_t"))
                 data.setdefault("book_value_equity", f_in.get("book_value_equity_t"))
+                data.setdefault("is_financial_institution", f_in.get("is_financial_institution", False))
                 wc = f_in.get("working_capital_t")
                 if wc is None and "current_assets_t" in f_in and "current_liabilities_t" in f_in:
                     wc = float(f_in.get("current_assets_t", 0.0)) - float(f_in.get("current_liabilities_t", 0.0))
@@ -356,11 +385,12 @@ class ComprehensiveCreditRequest(BaseModel):
     @model_validator(mode='after')
     def validate_balance_sheet(self):
         implied_equity = self.total_assets - self.total_liabilities
-        tolerance = 0.05 * self.total_assets
+        tolerance = 0.01 * self.total_assets
         if abs(implied_equity - self.book_value_equity) > tolerance:
             raise ValueError(
                 f"Accounting Identity Failure: Assets ({self.total_assets}) - "
-                f"Liabilities ({self.total_liabilities}) != Book Equity ({self.book_value_equity})"
+                f"Liabilities ({self.total_liabilities}) != Book Equity ({self.book_value_equity}) "
+                f"within 1% tolerance."
             )
         return self
 

@@ -1544,6 +1544,132 @@ def test_case_study_msft_fortress_benchmark():
     assert ecl_res["ecl_percentage_of_ead"] < 0.1
 
 
+# =====================================================================
+# 17. STAGE 3 VERIFICATION TESTS (F2-F4, V3, S2, A5, A6)
+# =====================================================================
+
+def test_sme_correlation_below_012():
+    """V3: SME correlation must not be clipped back up to 0.12; floor is 0.08."""
+    # At PD=0.20, base corporate rho is ~0.12.
+    # For firm with 5.0M EUR sales, SME discount is -0.04 -> rho should reach 0.08.
+    rho_sme = calculate_corporate_asset_correlation(pd=0.20, firm_sales_eur_m=5.0)
+    assert rho_sme < 0.12
+    assert rho_sme >= 0.08
+    assert pytest.approx(rho_sme, abs=1e-3) == 0.08
+
+    # Without SME sales, correlation stays >= 0.12
+    rho_large = calculate_corporate_asset_correlation(pd=0.20, firm_sales_eur_m=None)
+    assert rho_large >= 0.12
+
+    # Test aliases calculate_asset_correlation and calculate_basel_correlation
+    from core.vasicek import calculate_asset_correlation, calculate_basel_correlation
+    assert calculate_asset_correlation(pd=0.20, firm_sales_eur_m=5.0) == rho_sme
+    assert calculate_basel_correlation(pd=0.20, firm_sales_eur_m=5.0) == rho_sme
+
+
+def test_financial_institution_domain_warning(clean_forensic_input):
+    """F3: Financial institutions skip non-financial models with explicit domain warning."""
+    bank_input = clean_forensic_input.model_copy(update={"is_financial_institution": True})
+    forensics_res = calculate_forensics(bank_input)
+
+    assert forensics_res.is_financial_institution is True
+    assert forensics_res.domain_warning == "These models were built for non-financial firms."
+    assert forensics_res.beneish.domain_warning == "These models were built for non-financial firms."
+    assert forensics_res.altman.domain_warning == "These models were built for non-financial firms."
+    assert forensics_res.ccc.domain_warning == "These models were built for non-financial firms."
+    assert forensics_res.beneish.is_manipulator is False
+    assert len(forensics_res.beneish.red_flags) == 0
+    assert forensics_res.ccc.warning_triggered is False
+    assert forensics_res.composite_forensic_risk == "Not Applicable"
+    assert "These models were built for non-financial firms." in forensics_res.summary_findings
+
+    # Verify calculate_beneish_m_score raw returns domain warning
+    b_raw = calculate_beneish_m_score(
+        sales_t=100.0, sales_prev=100.0, cogs_t=50.0, cogs_prev=50.0,
+        rec_t=10.0, rec_prev=10.0, ca_t=50.0, ca_prev=50.0,
+        ppe_t=20.0, ppe_prev=20.0, sec_t=0.0, sec_prev=0.0,
+        ta_t=100.0, ta_prev=100.0, dep_t=5.0, dep_prev=5.0,
+        sga_t=10.0, sga_prev=10.0, net_income_t=10.0, cfo_t=10.0,
+        total_debt_t=50.0, total_debt_prev=50.0,
+        is_financial_institution=True,
+    )
+    assert b_raw["domain_warning"] == "These models were built for non-financial firms."
+    assert b_raw["is_manipulator"] is False
+
+
+def test_beneish_missing_data_quality_flags():
+    """F4: Missing or zero denominators trigger explicit data_quality_flags."""
+    # Calling with zero sales_prev and zero rec_prev
+    b_res = calculate_beneish_m_score(
+        sales_t=100.0, sales_prev=0.0,
+        cogs_t=50.0, cogs_prev=0.0,
+        rec_t=10.0, rec_prev=0.0,
+        ca_t=50.0, ca_prev=0.0,
+        ppe_t=20.0, ppe_prev=0.0,
+        sec_t=0.0, sec_prev=0.0,
+        ta_t=100.0, ta_prev=0.0,
+        dep_t=5.0, dep_prev=0.0,
+        sga_t=10.0, sga_prev=0.0,
+        net_income_t=10.0, cfo_t=10.0,
+        total_debt_t=50.0, total_debt_prev=0.0,
+    )
+    flags = b_res["data_quality_flags"]
+    assert len(flags) > 0
+    assert any("not computable: zero or missing denominator" in f for f in flags)
+    assert any("DSRI" in f for f in flags)
+
+    # API comprehensive flat request missing comparative data
+    flat_req = {
+        "company_name": "Test Flat Corp",
+        "ticker": "TFC",
+        "equity_market_cap": 200.0,
+        "equity_volatility": 0.35,
+        "short_term_debt": 40.0,
+        "long_term_debt": 60.0,
+        "loan_exposure": 50.0,
+        "revenue": 300.0,
+        "cogs": 180.0,
+        "total_assets": 500.0,
+        "total_liabilities": 200.0,
+        "book_value_equity": 300.0,
+        "ebit": 40.0,
+        "retained_earnings": 100.0,
+        "working_capital": 50.0,
+        "receivables": 30.0,
+        "inventory": 40.0,
+        "payables": 25.0
+    }
+    resp = client.post("/credit/comprehensive", json=flat_req)
+    assert resp.status_code == 200
+    data = resp.json()
+    beneish_flags = data["forensics"]["beneish"]["data_quality_flags"]
+    assert "Beneish/CCC requires two periods of comparative accounting data" in beneish_flags
+
+
+def test_forensic_input_1pct_identity_check():
+    """S2: ForensicInput enforces strict 1% balance-sheet identity tolerance."""
+    base_kwargs = dict(
+        sales_t=1000.0, cogs_t=600.0, receivables_t=120.0, current_assets_t=400.0,
+        ppe_t=500.0, total_assets_t=1000.0, depreciation_t=50.0, sga_t=150.0,
+        net_income_t=120.0, cash_flow_operations_t=130.0, current_liabilities_t=150.0,
+        long_term_debt_t=250.0, total_liabilities_t=400.0, inventory_t=150.0,
+        accounts_payable_t=100.0, ebit_t=150.0, retained_earnings_t=300.0,
+        sales_t_minus_1=950.0, cogs_t_minus_1=570.0, receivables_t_minus_1=114.0,
+        current_assets_t_minus_1=380.0, ppe_t_minus_1=480.0, total_assets_t_minus_1=950.0,
+        depreciation_t_minus_1=48.0, sga_t_minus_1=142.0, long_term_debt_t_minus_1=190.0,
+        total_liabilities_t_minus_1=380.0, inventory_t_minus_1=140.0,
+        accounts_payable_t_minus_1=95.0
+    )
+    # Assets (1000) - Liabilities (400) = 600. Diff = 5 <= 10 (1%) -> Valid
+    valid_inp = ForensicInput(**base_kwargs, book_value_equity_t=605.0)
+    assert valid_inp.book_value_equity_t == 605.0
+
+    # Assets (1000) - Liabilities (400) = 600. Diff = 15 > 10 (1%) -> Violation
+    with pytest.raises(ValueError, match="Balance-Sheet Identity Violation|1% tolerance"):
+        ForensicInput(**base_kwargs, book_value_equity_t=585.0)
+
+
+
 
 
 

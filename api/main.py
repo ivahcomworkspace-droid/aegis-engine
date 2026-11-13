@@ -9,6 +9,7 @@ High-throughput asynchronous FastAPI microservice exposing:
 """
 
 import os
+import logging
 from datetime import datetime, timezone
 from typing import Dict, Any, Tuple
 from fastapi import FastAPI, HTTPException, Response, status
@@ -16,6 +17,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
+
+logger = logging.getLogger("aegis_engine.api")
 
 try:
     from aegis_engine.schemas.credit_models import (
@@ -81,7 +84,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -121,7 +124,13 @@ async def solve_merton_endpoint(payload: MertonInput) -> MertonOutput:
     except (ValueError, ArithmeticError) as e:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Merton solver failure: {str(e)}"
+            detail=str(e)
+        )
+    except Exception:
+        logger.exception("Unexpected server error")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal error"
         )
 
 
@@ -131,22 +140,28 @@ async def analyze_merton_endpoint(payload: MertonAnalysisRequest) -> MertonOutpu
     """
     Perimeter endpoint for structural credit analysis with strict Pydantic v2 boundaries.
     """
-    m_in = MertonInput(
-        equity_value=payload.equity_market_cap,
-        equity_volatility=payload.equity_volatility,
-        short_term_debt=payload.short_term_debt,
-        long_term_debt=payload.long_term_debt,
-        risk_free_rate=payload.risk_free_rate,
-        drift_mu=payload.asset_drift_mu,
-        maturity=payload.maturity_years,
-        loss_given_default=1.0 - payload.recovery_rate
-    )
     try:
+        m_in = MertonInput(
+            equity_value=payload.equity_market_cap,
+            equity_volatility=payload.equity_volatility,
+            short_term_debt=payload.short_term_debt,
+            long_term_debt=payload.long_term_debt,
+            risk_free_rate=payload.risk_free_rate,
+            drift_mu=payload.asset_drift_mu,
+            maturity=payload.maturity_years,
+            loss_given_default=1.0 - payload.recovery_rate
+        )
         return await run_in_threadpool(solve_merton, m_in)
     except (ValueError, ArithmeticError) as e:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Merton analysis failure: {str(e)}"
+            detail=str(e)
+        )
+    except Exception:
+        logger.exception("Unexpected server error")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal error"
         )
 
 
@@ -164,7 +179,13 @@ async def analyze_forensics_endpoint(payload: ForensicInput) -> ForensicAnalysis
     except (ValueError, ArithmeticError) as e:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Forensics calculation error: {str(e)}"
+            detail=str(e)
+        )
+    except Exception:
+        logger.exception("Unexpected server error")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal error"
         )
 
 
@@ -174,47 +195,53 @@ async def audit_forensics_endpoint(payload: ForensicAnalysisRequest) -> Forensic
     """
     Perimeter endpoint for balance sheet forensics enforcing double-entry reconciliation.
     """
-    f_in = ForensicInput(
-        sales_t=payload.sales_t0,
-        cogs_t=payload.cogs_t0,
-        receivables_t=payload.receivables_t0,
-        current_assets_t=payload.current_assets_t0,
-        ppe_t=payload.ppe_t0,
-        total_assets_t=payload.total_assets_t0,
-        depreciation_t=payload.depreciation_t0,
-        sga_t=payload.sga_t0,
-        net_income_t=payload.net_income_t0,
-        cash_flow_operations_t=payload.operating_cash_flow_t0,
-        current_liabilities_t=max(payload.total_liabilities_t0 * 0.4, 1.0),
-        long_term_debt_t=payload.total_debt_t0,
-        total_liabilities_t=payload.total_liabilities_t0,
-        inventory_t=payload.inventory_t0,
-        accounts_payable_t=payload.payables_t0,
-        ebit_t=payload.ebit_t0,
-        retained_earnings_t=payload.retained_earnings_t0,
-        book_value_equity_t=payload.book_value_equity_t0,
-        working_capital_t=payload.working_capital_t0,
-        securities_t=payload.securities_t0,
-        sales_t_minus_1=payload.sales_t1,
-        cogs_t_minus_1=payload.cogs_t1,
-        receivables_t_minus_1=payload.receivables_t1,
-        current_assets_t_minus_1=payload.current_assets_t1,
-        ppe_t_minus_1=payload.ppe_t1,
-        total_assets_t_minus_1=payload.total_assets_t1,
-        depreciation_t_minus_1=payload.depreciation_t1,
-        sga_t_minus_1=payload.sga_t1,
-        long_term_debt_t_minus_1=payload.total_debt_t1,
-        total_liabilities_t_minus_1=max(payload.total_assets_t1 * 0.4, 1.0),
-        inventory_t_minus_1=payload.inventory_t1,
-        accounts_payable_t_minus_1=payload.payables_t1,
-        securities_t_minus_1=payload.securities_t1,
-    )
     try:
+        f_in = ForensicInput(
+            sales_t=payload.sales_t0,
+            cogs_t=payload.cogs_t0,
+            receivables_t=payload.receivables_t0,
+            current_assets_t=payload.current_assets_t0,
+            ppe_t=payload.ppe_t0,
+            total_assets_t=payload.total_assets_t0,
+            depreciation_t=payload.depreciation_t0,
+            sga_t=payload.sga_t0,
+            net_income_t=payload.net_income_t0,
+            cash_flow_operations_t=payload.operating_cash_flow_t0,
+            current_liabilities_t=max(payload.total_liabilities_t0 * 0.4, 1.0),
+            long_term_debt_t=payload.total_debt_t0,
+            total_liabilities_t=payload.total_liabilities_t0,
+            inventory_t=payload.inventory_t0,
+            accounts_payable_t=payload.payables_t0,
+            ebit_t=payload.ebit_t0,
+            retained_earnings_t=payload.retained_earnings_t0,
+            book_value_equity_t=payload.book_value_equity_t0,
+            working_capital_t=payload.working_capital_t0,
+            securities_t=payload.securities_t0,
+            sales_t_minus_1=payload.sales_t1,
+            cogs_t_minus_1=payload.cogs_t1,
+            receivables_t_minus_1=payload.receivables_t1,
+            current_assets_t_minus_1=payload.current_assets_t1,
+            ppe_t_minus_1=payload.ppe_t1,
+            total_assets_t_minus_1=payload.total_assets_t1,
+            depreciation_t_minus_1=payload.depreciation_t1,
+            sga_t_minus_1=payload.sga_t1,
+            long_term_debt_t_minus_1=payload.total_debt_t1,
+            total_liabilities_t_minus_1=max(payload.total_assets_t1 * 0.4, 1.0),
+            inventory_t_minus_1=payload.inventory_t1,
+            accounts_payable_t_minus_1=payload.payables_t1,
+            securities_t_minus_1=payload.securities_t1,
+        )
         return await run_in_threadpool(calculate_forensics, f_in)
     except (ValueError, ArithmeticError) as e:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Forensics audit failure: {str(e)}"
+            detail=str(e)
+        )
+    except Exception:
+        logger.exception("Unexpected server error")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal error"
         )
 
 
@@ -230,7 +257,13 @@ async def vasicek_endpoint(payload: VasicekInput) -> VasicekOutput:
     except (ValueError, ArithmeticError) as e:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Vasicek engine failure: {str(e)}"
+            detail=str(e)
+        )
+    except Exception:
+        logger.exception("Unexpected server error")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal error"
         )
 
 
@@ -246,7 +279,13 @@ async def ecl_endpoint(payload: IFRS9StageInput) -> ECLResult:
     except (ValueError, ArithmeticError) as e:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"IFRS 9 ECL error: {str(e)}"
+            detail=str(e)
+        )
+    except Exception:
+        logger.exception("Unexpected server error")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal error"
         )
 
 
@@ -323,145 +362,164 @@ async def comprehensive_assessment_endpoint(req: ComprehensiveCreditRequest) -> 
     - Composite credit rating and committee directive
     - Non-blocking threadpool execution
     """
-    # 1. Structural Merton Input
-    if req.merton_input is not None:
-        m_in = req.merton_input
-    else:
-        m_in = MertonInput(
-            equity_value=req.equity_market_cap,
-            equity_volatility=req.equity_volatility,
-            short_term_debt=req.short_term_debt,
-            long_term_debt=req.long_term_debt,
-            risk_free_rate=req.risk_free_rate,
-            drift_mu=req.asset_drift_mu,
-            maturity=req.maturity_years,
-            loss_given_default=1.0 - req.recovery_rate
+    try:
+        # 1. Structural Merton Input
+        if req.merton_input is not None:
+            m_in = req.merton_input
+        else:
+            m_in = MertonInput(
+                equity_value=req.equity_market_cap,
+                equity_volatility=req.equity_volatility,
+                short_term_debt=req.short_term_debt,
+                long_term_debt=req.long_term_debt,
+                risk_free_rate=req.risk_free_rate,
+                drift_mu=req.asset_drift_mu,
+                maturity=req.maturity_years,
+                loss_given_default=1.0 - req.recovery_rate
+            )
+
+        # 2. Forensic Input
+        if req.forensic_input is not None:
+            f_in = req.forensic_input
+        else:
+            sales = req.revenue
+            cogs = req.cogs
+            ta = req.total_assets
+            tl = req.total_liabilities
+            bve = req.book_value_equity
+            wc = req.working_capital
+            re = req.retained_earnings
+            ebit = req.ebit
+            rec = req.receivables
+            inv = req.inventory
+            pay = req.payables
+
+            if req.simulate_beneish_manipulation:
+                sales_prev = sales * 0.70
+                rec_prev = rec * 0.30
+                cogs_prev = cogs * 0.50
+                cfo_curr = ebit * 0.10
+            else:
+                sales_prev = sales * 0.95
+                rec_prev = rec * 0.95
+                cogs_prev = cogs * 0.95
+                cfo_curr = ebit * 0.85
+
+            if req.simulate_working_capital_stress:
+                rec_prev_ccc = rec * 0.50
+                inv_prev = inv * 0.50
+            else:
+                rec_prev_ccc = rec_prev
+                inv_prev = inv * 0.95
+
+            f_in = ForensicInput(
+                is_financial_institution=req.is_financial_institution,
+                sales_t=sales,
+                cogs_t=cogs,
+                receivables_t=rec,
+                current_assets_t=max(wc + tl * 0.5, rec + inv + 10.0),
+                ppe_t=max(ta * 0.4, 10.0),
+                total_assets_t=ta,
+                depreciation_t=max(ebit * 0.2, 5.0),
+                sga_t=max(sales * 0.15, 5.0),
+                net_income_t=ebit * 0.7,
+                cash_flow_operations_t=cfo_curr,
+                current_liabilities_t=max(tl * 0.4, 5.0),
+                long_term_debt_t=max(tl * 0.6, 0.0),
+                total_liabilities_t=tl,
+                inventory_t=inv,
+                accounts_payable_t=pay,
+                ebit_t=ebit,
+                retained_earnings_t=re,
+                book_value_equity_t=bve,
+                working_capital_t=wc,
+                sales_t_minus_1=sales_prev,
+                cogs_t_minus_1=cogs_prev,
+                receivables_t_minus_1=rec_prev_ccc,
+                current_assets_t_minus_1=max(ta * 0.95 * 0.4, 10.0),
+                ppe_t_minus_1=max(ta * 0.95 * 0.4, 10.0),
+                total_assets_t_minus_1=ta * 0.95,
+                depreciation_t_minus_1=max(ebit * 0.2 * 0.95, 5.0),
+                sga_t_minus_1=max(sales_prev * 0.15, 5.0),
+                long_term_debt_t_minus_1=max(tl * 0.6 * 0.95, 0.0),
+                total_liabilities_t_minus_1=tl * 0.95,
+                inventory_t_minus_1=inv_prev,
+                accounts_payable_t_minus_1=pay * 0.95
+            )
+
+        # 3. Offload core analytics to threadpool
+        merton_res = await run_in_threadpool(solve_merton, m_in)
+        forensics_res = await run_in_threadpool(calculate_forensics, f_in)
+
+        # Flag flat request missing comparative accounting periods
+        if req.forensic_input is None:
+            forensics_res.beneish.data_quality_flags.append(
+                "Beneish/CCC requires two periods of comparative accounting data"
+            )
+
+        # 4. Vasicek ASRF
+        pit_pd = max(min(merton_res.default_probability_physical, 0.999), 0.0001)
+        # Fix A1: Use explicit loan exposure provided in the request without artificial floor
+        ead = float(req.loan_exposure)
+        vasicek_in = VasicekInput(
+            pit_pd=pit_pd,
+            lgd=m_in.loss_given_default,
+            ead=ead,
+            maturity=m_in.maturity,
+        )
+        vasicek_res = await run_in_threadpool(calculate_vasicek_asrf, vasicek_in)
+
+        # 5. IFRS 9 ECL
+        orig_dd = req.origination_distance_to_default
+        if orig_dd is None:
+            orig_dd = merton_res.distance_to_default_physical + 0.5
+
+        tenor = max(req.loan_tenor_years, int(req.maturity_years), 1)
+        ead_schedule = [ead * ((tenor - i) / tenor) for i in range(tenor)]
+
+        ecl_in = IFRS9StageInput(
+            current_distance_to_default=merton_res.distance_to_default_physical,
+            origination_distance_to_default=orig_dd,
+            current_pd=pit_pd,
+            days_past_due=req.days_past_due,
+            is_credit_impaired=(req.days_past_due >= 90),
+            ead_schedule=ead_schedule,
+            effective_interest_rate=req.effective_interest_rate,
+        )
+        ecl_res = await run_in_threadpool(calculate_ifrs9_ecl, ecl_in)
+
+        band, stance, summary = _compute_internal_risk_band_and_stance(
+            merton_res, forensics_res, vasicek_res, ecl_res
         )
 
-    # 2. Forensic Input
-    if req.forensic_input is not None:
-        f_in = req.forensic_input
-    else:
-        sales = req.revenue
-        cogs = req.cogs
-        ta = req.total_assets
-        tl = req.total_liabilities
-        bve = req.book_value_equity
-        wc = req.working_capital
-        re = req.retained_earnings
-        ebit = req.ebit
-        rec = req.receivables
-        inv = req.inventory
-        pay = req.payables
-
-        if req.simulate_beneish_manipulation:
-            sales_prev = sales * 0.70
-            rec_prev = rec * 0.30
-            cogs_prev = cogs * 0.50
-            cfo_curr = ebit * 0.10
-        else:
-            sales_prev = sales * 0.95
-            rec_prev = rec * 0.95
-            cogs_prev = cogs * 0.95
-            cfo_curr = ebit * 0.85
-
-        if req.simulate_working_capital_stress:
-            rec_prev_ccc = rec * 0.50
-            inv_prev = inv * 0.50
-        else:
-            rec_prev_ccc = rec_prev
-            inv_prev = inv * 0.95
-
-        f_in = ForensicInput(
-            sales_t=sales,
-            cogs_t=cogs,
-            receivables_t=rec,
-            current_assets_t=max(wc + tl * 0.5, rec + inv + 10.0),
-            ppe_t=max(ta * 0.4, 10.0),
-            total_assets_t=ta,
-            depreciation_t=max(ebit * 0.2, 5.0),
-            sga_t=max(sales * 0.15, 5.0),
-            net_income_t=ebit * 0.7,
-            cash_flow_operations_t=cfo_curr,
-            current_liabilities_t=max(tl * 0.4, 5.0),
-            long_term_debt_t=max(tl * 0.6, 0.0),
-            total_liabilities_t=tl,
-            inventory_t=inv,
-            accounts_payable_t=pay,
-            ebit_t=ebit,
-            retained_earnings_t=re,
-            book_value_equity_t=bve,
-            working_capital_t=wc,
-            sales_t_minus_1=sales_prev,
-            cogs_t_minus_1=cogs_prev,
-            receivables_t_minus_1=rec_prev_ccc,
-            current_assets_t_minus_1=max(ta * 0.95 * 0.4, 10.0),
-            ppe_t_minus_1=max(ta * 0.95 * 0.4, 10.0),
-            total_assets_t_minus_1=ta * 0.95,
-            depreciation_t_minus_1=max(ebit * 0.2 * 0.95, 5.0),
-            sga_t_minus_1=max(sales_prev * 0.15, 5.0),
-            long_term_debt_t_minus_1=max(tl * 0.6 * 0.95, 0.0),
-            total_liabilities_t_minus_1=tl * 0.95,
-            inventory_t_minus_1=inv_prev,
-            accounts_payable_t_minus_1=pay * 0.95
+        return ComprehensiveCreditResponse(
+            ticker=req.ticker or "",
+            company_name=req.company_name,
+            timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+            internal_risk_band=band.value,
+            indicative_stance=stance,
+            credit_rating=band.value,
+            recommendation=stance,
+            regulatory_disclaimer=DEFAULT_REGULATORY_DISCLAIMER,
+            merton=merton_res,
+            forensics=forensics_res,
+            regulatory_capital=vasicek_res,
+            ifrs9_ecl=ecl_res,
+            composite_rating=band.value,
+            vasicek=vasicek_res,
+            executive_summary=summary,
         )
-
-    # 3. Offload core analytics to threadpool
-    merton_res = await run_in_threadpool(solve_merton, m_in)
-    forensics_res = await run_in_threadpool(calculate_forensics, f_in)
-
-    # 4. Vasicek ASRF
-    pit_pd = max(min(merton_res.default_probability_physical, 0.999), 0.0001)
-    # Fix A1: Use explicit loan exposure provided in the request without artificial floor
-    ead = float(req.loan_exposure)
-    vasicek_in = VasicekInput(
-        pit_pd=pit_pd,
-        lgd=m_in.loss_given_default,
-        ead=ead,
-        maturity=m_in.maturity,
-    )
-    vasicek_res = await run_in_threadpool(calculate_vasicek_asrf, vasicek_in)
-
-    # 5. IFRS 9 ECL
-    orig_dd = req.origination_distance_to_default
-    if orig_dd is None:
-        orig_dd = merton_res.distance_to_default_physical + 0.5
-
-    tenor = max(req.loan_tenor_years, int(req.maturity_years), 1)
-    ead_schedule = [ead * ((tenor - i) / tenor) for i in range(tenor)]
-
-    ecl_in = IFRS9StageInput(
-        current_distance_to_default=merton_res.distance_to_default_physical,
-        origination_distance_to_default=orig_dd,
-        current_pd=pit_pd,
-        days_past_due=req.days_past_due,
-        is_credit_impaired=(req.days_past_due >= 90),
-        ead_schedule=ead_schedule,
-        effective_interest_rate=req.effective_interest_rate,
-    )
-    ecl_res = await run_in_threadpool(calculate_ifrs9_ecl, ecl_in)
-
-    band, stance, summary = _compute_internal_risk_band_and_stance(
-        merton_res, forensics_res, vasicek_res, ecl_res
-    )
-
-    return ComprehensiveCreditResponse(
-        ticker=req.ticker or "",
-        company_name=req.company_name,
-        timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
-        internal_risk_band=band.value,
-        indicative_stance=stance,
-        credit_rating=band.value,
-        recommendation=stance,
-        regulatory_disclaimer=DEFAULT_REGULATORY_DISCLAIMER,
-        merton=merton_res,
-        forensics=forensics_res,
-        regulatory_capital=vasicek_res,
-        ifrs9_ecl=ecl_res,
-        composite_rating=band.value,
-        vasicek=vasicek_res,
-        executive_summary=summary,
-    )
+    except (ValueError, ArithmeticError) as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(e)
+        )
+    except Exception:
+        logger.exception("Unexpected server error")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal error"
+        )
 
 
 @app.post("/credit/memo/pdf", tags=["Memorandum Compilation"])
@@ -473,16 +531,28 @@ async def credit_memo_pdf_endpoint(req: ComprehensiveCreditRequest) -> Response:
     high-resolution vector/PNG charts and underwriting tables.
     Runs non-blocking in threadpool.
     """
-    assessment = await comprehensive_assessment_endpoint(req)
-    pdf_bytes = await run_in_threadpool(generate_credit_memo_pdf, assessment)
+    try:
+        assessment = await comprehensive_assessment_endpoint(req)
+        pdf_bytes = await run_in_threadpool(generate_credit_memo_pdf, assessment)
 
-    safe_name = req.company_name.replace(' ', '_').replace('/', '_')
-    filename = f"Aegis_Credit_Memo_{safe_name}.pdf"
-    return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
-    )
+        safe_name = req.company_name.replace(' ', '_').replace('/', '_')
+        filename = f"Aegis_Credit_Memo_{safe_name}.pdf"
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        )
+    except (ValueError, ArithmeticError) as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(e)
+        )
+    except Exception:
+        logger.exception("Unexpected server error")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal error"
+        )
 
 
 @app.post("/credit/memo/html", response_class=HTMLResponse, tags=["Memorandum Compilation"])
@@ -492,9 +562,21 @@ async def credit_memo_html_endpoint(req: ComprehensiveCreditRequest) -> HTMLResp
     Generates interactive HTML version of the institutional credit memorandum.
     Runs non-blocking in threadpool.
     """
-    assessment = await comprehensive_assessment_endpoint(req)
-    html_text = await run_in_threadpool(generate_credit_memo_html, assessment)
-    return HTMLResponse(content=html_text)
+    try:
+        assessment = await comprehensive_assessment_endpoint(req)
+        html_text = await run_in_threadpool(generate_credit_memo_html, assessment)
+        return HTMLResponse(content=html_text)
+    except (ValueError, ArithmeticError) as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(e)
+        )
+    except Exception:
+        logger.exception("Unexpected server error")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal error"
+        )
 
 
 # Mount static frontend directory to serve single-page application at root
