@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from typing import Dict, Any, Tuple
 from fastapi import FastAPI, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
@@ -31,6 +32,7 @@ try:
         ECLResult,
         ComprehensiveCreditRequest,
         ComprehensiveCreditAssessment,
+        BorrowerMarketData,
     )
     from aegis_engine.core.merton import solve_merton
     from aegis_engine.core.forensics import calculate_forensics
@@ -39,6 +41,7 @@ try:
         generate_credit_memo_pdf,
         generate_credit_memo_html,
     )
+    from aegis_engine.services.market_data import MarketDataError, company_directory, load_borrower
 except ModuleNotFoundError:
     from schemas.credit_models import (
         MertonInput,
@@ -53,6 +56,7 @@ except ModuleNotFoundError:
         ECLResult,
         ComprehensiveCreditRequest,
         ComprehensiveCreditAssessment,
+        BorrowerMarketData,
     )
     from core.merton import solve_merton
     from core.forensics import calculate_forensics
@@ -61,6 +65,7 @@ except ModuleNotFoundError:
         generate_credit_memo_pdf,
         generate_credit_memo_html,
     )
+    from services.market_data import MarketDataError, company_directory, load_borrower
 
 app = FastAPI(
     title="Aegis Institutional Credit Risk & Forensics Engine",
@@ -79,6 +84,18 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# The company list for the dropdowns is about 600 KB of JSON; compressed it's under 200 KB
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+
+@app.middleware("http")
+async def revalidate_html(request, call_next):
+    """The single-page app must not be served stale from the browser cache after an update."""
+    response = await call_next(request)
+    if response.headers.get("content-type", "").startswith("text/html"):
+        response.headers.setdefault("Cache-Control", "no-cache")
+    return response
 
 
 @app.get("/health", status_code=status.HTTP_200_OK, tags=["System"])
@@ -249,28 +266,33 @@ def _compute_composite_rating_and_recommendation(
     forensics_res: ForensicAnalysisResult,
     vasicek_res: VasicekOutput,
     ecl_res: ECLResult,
+    use_forensics: bool = True,
 ) -> Tuple[str, str, str]:
     """
     Underwriting engine synthesis: maps quantitative vectors into credit ratings
-    and actionable underwriting directives.
+    and actionable underwriting directives. With use_forensics=False (financial companies), Altman Z''
+    and Beneish are left out, since both are calibrated on non-financial companies.
     """
     dd = merton_res.distance_to_default_physical
     z_double = forensics_res.altman.z_double_prime
     m_score = forensics_res.beneish.m_score
-    is_manip = forensics_res.beneish.is_manipulator
+    is_manip = use_forensics and forensics_res.beneish.is_manipulator
     stage = ecl_res.assigned_stage
 
+    def z_below(threshold: float) -> bool:
+        return use_forensics and z_double < threshold
+
     # Rating determination
-    if stage == 3 or dd < 0.5 or z_double < 0.8:
+    if stage == 3 or dd < 0.5 or z_below(0.8):
         rating = "CCC/D"
         rec = "REJECT / IMPAIRMENT WATCH: High imminent default probability; trigger debt work-out."
-    elif dd < 1.2 or z_double < 1.10 or is_manip:
+    elif dd < 1.2 or z_below(1.10) or is_manip:
         rating = "B" if not is_manip else "B-"
         rec = "UNDERWRITE STRICT COVENANTS: High leverage, weak liquidity headroom or forensic red flags."
-    elif dd < 2.0 or z_double < 1.80 or stage == 2:
+    elif dd < 2.0 or z_below(1.80) or stage == 2:
         rating = "BB"
         rec = "MONITOR CLOSELY: Significant increase in credit risk (SICR) observed; quarterly debt covenants required."
-    elif dd < 3.2 or z_double < 2.60:
+    elif dd < 3.2 or z_below(2.60):
         rating = "BBB"
         rec = "APPROVE / INVESTMENT GRADE: Adequate solvency buffers with standard negative pledge covenants."
     elif dd < 4.5:
@@ -283,10 +305,16 @@ def _compute_composite_rating_and_recommendation(
         rating = "AAA"
         rec = "SUPERIOR QUALITY: Minimal solvency risk across all macroeconomic stress permutations."
 
+    if use_forensics:
+        forensic_clause = (
+            f"Altman Z'' of {z_double:.2f} ({forensics_res.altman.zone}), and Beneish M-Score of {m_score:.2f} "
+            f"({'MANIPULATION ALERT' if is_manip else 'CLEAN'})"
+        )
+    else:
+        forensic_clause = "forensic scores not applied (calibrated on non-financial companies)"
     summary = (
         f"Borrower exhibits physical Distance-to-Default of {dd:.2f}σ (PD: {merton_res.default_probability_physical:.3%}), "
-        f"Altman Z'' of {z_double:.2f} ({forensics_res.altman.zone}), and Beneish M-Score of {m_score:.2f} "
-        f"({'MANIPULATION ALERT' if is_manip else 'CLEAN'}). Classified under IFRS 9 as {ecl_res.stage_name} "
+        f"{forensic_clause}. Classified under IFRS 9 as {ecl_res.stage_name} "
         f"with lifetime ECL allowance of ${ecl_res.total_ecl:,.0f}."
     )
 
@@ -423,7 +451,7 @@ async def comprehensive_assessment_endpoint(req: ComprehensiveCreditRequest) -> 
     ecl_res = await run_in_threadpool(calculate_ifrs9_ecl, ecl_in)
 
     rating, rec, summary = _compute_composite_rating_and_recommendation(
-        merton_res, forensics_res, vasicek_res, ecl_res
+        merton_res, forensics_res, vasicek_res, ecl_res, use_forensics=req.forensics_applicable
     )
 
     return ComprehensiveCreditAssessment(
@@ -437,7 +465,44 @@ async def comprehensive_assessment_endpoint(req: ComprehensiveCreditRequest) -> 
         composite_rating=rating,
         recommendation=rec,
         executive_summary=summary,
+        forensics_applicable=req.forensics_applicable,
     )
+
+
+@app.get("/api/v1/market/borrower", response_model=BorrowerMarketData, tags=["Live Market Data"])
+async def borrower_market_data_endpoint(ticker: str) -> BorrowerMarketData:
+    """
+    Fills the Merton inputs for a listed borrower from public data, with each value's source:
+    - Equity value: latest price x SEC shares outstanding; volatility from a year of daily returns
+    - Short- and long-term debt from the latest 10-Q/10-K (banks: deposits count as short-term debt)
+    - Risk-free rate: US Treasury 1-year yield, continuously compounded
+    - The last two annual reports as forensic inputs, scored with Beneish, Altman Z'' and CCC
+    Sources fail independently; anything not filled is listed in `warnings`.
+    Requires AEGIS_SEC_USER_AGENT (a name and email) because the SEC asks clients to identify themselves.
+    """
+    try:
+        data = await load_borrower(ticker)
+    except MarketDataError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+
+    analysis = None
+    if data["forensic_input"] is not None:
+        analysis = await run_in_threadpool(calculate_forensics, ForensicInput(**data["forensic_input"]))
+    return BorrowerMarketData(**data, forensic_analysis=analysis)
+
+
+@app.get("/api/v1/market/companies", tags=["Live Market Data"])
+async def company_directory_endpoint() -> Dict[str, Any]:
+    """
+    Every ticker in the SEC's company list, for the dashboard's ticker and company dropdowns.
+    Each row is [ticker, name, exchange, automatic, cik]. `automatic` is 1 when the company filed a
+    10-K or 10-Q in the last three quarters, so Load can fill its inputs; those rows come first,
+    each group in the SEC's order (roughly by market value). Cached for a day.
+    """
+    try:
+        return await company_directory()
+    except MarketDataError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)
 
 
 @app.post("/credit/memo/pdf", tags=["Memorandum Compilation"])

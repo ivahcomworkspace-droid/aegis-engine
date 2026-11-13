@@ -1,0 +1,8 @@
+# Keep local settings, caches and environments out of Docker images
+.env
+.cache/
+venv/
+.venv/
+__pycache__/
+.pytest_cache/
+*.pdf

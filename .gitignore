@@ -13,3 +13,7 @@ ENV/
 *.pdf
 .DS_Store
 Thumbs.db
+
+# Local settings and live-data cache
+.env
+.cache/

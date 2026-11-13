@@ -88,14 +88,27 @@ def _reconcile_assessment(assessment: ComprehensiveCreditAssessment) -> Tuple[Co
     else:
         stage_desc = f"Classified under IFRS 9 as Stage 3 (Credit-Impaired) with lifetime ECL allowance of ${total_ecl:,.0f} ({ecl_pct:.2f}%)."
 
+    if assessment.forensics_applicable:
+        forensic_clause = (
+            f"Altman Z'' of {f.altman.z_double_prime:.2f} ({f.altman.zone}), and Beneish M-Score of {f.beneish.m_score:.2f} "
+            f"({'MANIPULATION ALERT' if f.beneish.is_manipulator else 'CLEAN'})"
+        )
+    else:
+        # Financial companies: the scores are shown for reference only; they are calibrated on non-financial companies
+        forensic_clause = "forensic scores shown for reference only (calibrated on non-financial companies)"
+        f = f.model_copy(update={"summary_findings": [
+            "Financial-sector borrower: Beneish, Altman Z'' and cash-cycle scores are calibrated on non-financial "
+            "companies and were excluded from the rating."
+        ]})
+
     reconciled_summary = (
         f"Borrower exhibits physical Distance-to-Default of {dd:.2f}σ (PD: {m.default_probability_physical:.3%}), "
-        f"Altman Z'' of {f.altman.z_double_prime:.2f} ({f.altman.zone}), and Beneish M-Score of {f.beneish.m_score:.2f} "
-        f"({'MANIPULATION ALERT' if f.beneish.is_manipulator else 'CLEAN'}). {stage_desc}"
+        f"{forensic_clause}. {stage_desc}"
     )
 
     assessment = assessment.model_copy(update={
         "ifrs9_ecl": ecl,
+        "forensics": f,
         "recommendation": rec_directive,
         "executive_summary": reconciled_summary,
     })

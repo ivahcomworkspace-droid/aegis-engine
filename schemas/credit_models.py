@@ -302,7 +302,7 @@ class ComprehensiveCreditRequest(BaseModel):
     inventory: float = Field(60.0, ge=0.0)
     payables: float = Field(45.0, ge=0.0)
     revenue: float = Field(350.0, gt=0.0)
-    cogs: float = Field(240.0, gt=0.0)
+    cogs: float = Field(240.0, ge=0.0)
 
     # Forensic & Stress Simulation Flags
     simulate_beneish_manipulation: bool = Field(False)
@@ -315,6 +315,10 @@ class ComprehensiveCreditRequest(BaseModel):
     days_past_due: int = Field(default=0, ge=0)
     effective_interest_rate: float = Field(default=0.06, ge=0.0)
     loan_tenor_years: int = Field(default=5, ge=1, le=30)
+    forensics_applicable: bool = Field(
+        default=True,
+        description="False for financial companies (banks, insurers, real estate): forensic scores are then excluded from the rating",
+    )
 
     @model_validator(mode='before')
     @classmethod
@@ -371,3 +375,36 @@ class ComprehensiveCreditAssessment(BaseModel):
     composite_rating: str = Field(..., description="Institutional credit rating (e.g. AAA, AA, A, BBB, BB, B, CCC, D)")
     recommendation: str = Field(..., description="Institutional credit committee underwriting directive")
     executive_summary: str = Field(..., description="Comprehensive risk appraisal memo text")
+    forensics_applicable: bool = Field(default=True, description="Whether forensic scores informed the rating")
+
+
+class MarketDataPoint(BaseModel):
+    """One auto-filled input with where it came from."""
+    value: Optional[float] = Field(default=None, description="Filled value ($M for money, decimal for rates); null if unavailable")
+    source: str = Field(..., description="Data source")
+    as_of: Optional[str] = Field(default=None, description="Date the value refers to (YYYY-MM-DD)")
+    detail: Optional[str] = Field(default=None, description="How the value was built")
+
+
+class BorrowerMarketData(BaseModel):
+    """Merton inputs and annual financials for a listed borrower, built from SEC filings,
+    US Treasury yields and market prices."""
+    ticker: str
+    company_name: str
+    sec_name: Optional[str] = None
+    cik: str
+    sic: Optional[str] = None
+    sic_description: Optional[str] = None
+    is_bank: bool = Field(..., description="Deposit taker: deposits count as short-term debt")
+    equity_value: MarketDataPoint
+    equity_volatility: MarketDataPoint
+    short_term_debt: MarketDataPoint
+    long_term_debt: MarketDataPoint
+    risk_free_rate: MarketDataPoint
+    forensic_input: Optional[ForensicInput] = Field(default=None, description="Last two annual reports, $M")
+    forensic_analysis: Optional[ForensicAnalysisResult] = None
+    forensics_applicable: bool = Field(default=True, description="False for financial companies (SIC 6000-6999)")
+    fiscal_year_end: Optional[str] = None
+    prior_fiscal_year_end: Optional[str] = None
+    warnings: List[str] = Field(default_factory=list)
+    loaded_at: str

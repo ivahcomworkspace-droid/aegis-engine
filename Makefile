@@ -18,7 +18,7 @@ help:
 	@echo "========================================================================"
 
 test:
-	$(PYTHON) -m pytest tests/test_engine.py -v --tb=short
+	$(PYTHON) -m pytest tests -v --tb=short
 
 lint:
 	$(PYTHON) -m py_compile core/*.py schemas/*.py services/*.py api/*.py tests/*.py
@@ -31,7 +31,7 @@ docker-build:
 	docker build -t $(DOCKER_IMAGE) -f Dockerfile .
 
 docker-run:
-	docker run -p $(PORT):8000 --rm --name aegis_engine $(DOCKER_IMAGE)
+	docker run $(if $(wildcard .env),--env-file .env,) -p $(PORT):8000 --rm --name aegis_engine $(DOCKER_IMAGE)
 
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true

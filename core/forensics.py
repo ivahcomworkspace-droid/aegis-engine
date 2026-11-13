@@ -296,6 +296,13 @@ def calculate_altman_z_double_prime(
     }
 
 
+def _days_of(amount: float, base: float) -> float:
+    """Days of `base` that `amount` represents; 0 when the base isn't reported (for example a
+    service company with no cost of sales), instead of dividing by a near-zero placeholder."""
+    base = float(base)
+    return (float(amount) / base) * 365.0 if base > 0 else 0.0
+
+
 def calculate_cash_conversion_cycle(
     receivables: float,
     inventory: float,
@@ -317,8 +324,8 @@ def calculate_cash_conversion_cycle(
     cogs_curr = max(1e-4, float(cogs))
 
     dso = (float(receivables) / sales_curr) * 365.0
-    dio = (float(inventory) / cogs_curr) * 365.0
-    dpo = (float(payables) / cogs_curr) * 365.0
+    dio = _days_of(inventory, cogs)
+    dpo = _days_of(payables, cogs)
     ccc = dso + dio - dpo
 
     delta_ccc = 0.0
@@ -329,8 +336,8 @@ def calculate_cash_conversion_cycle(
         cogs_p = max(1e-4, float(prev_cogs))
 
         dso_prev = (float(prev_receivables) / sales_p) * 365.0
-        dio_prev = (float(prev_inventory) / cogs_p) * 365.0
-        dpo_prev = (float(prev_payables) / cogs_p) * 365.0
+        dio_prev = _days_of(prev_inventory, prev_cogs)
+        dpo_prev = _days_of(prev_payables, prev_cogs)
         ccc_prev = dso_prev + dio_prev - dpo_prev
 
         delta_ccc = ccc - ccc_prev
@@ -380,8 +387,8 @@ def calculate_ccc(inp: ForensicInput) -> CCCResult:
     sales_p = max(1e-4, float(inp.sales_t_minus_1))
     cogs_p = max(1e-4, float(inp.cogs_t_minus_1))
     dso_t_minus_1 = (float(inp.receivables_t_minus_1) / sales_p) * 365.0
-    dio_t_minus_1 = (float(inp.inventory_t_minus_1) / cogs_p) * 365.0
-    dpo_t_minus_1 = (float(inp.accounts_payable_t_minus_1) / cogs_p) * 365.0
+    dio_t_minus_1 = _days_of(inp.inventory_t_minus_1, inp.cogs_t_minus_1)
+    dpo_t_minus_1 = _days_of(inp.accounts_payable_t_minus_1, inp.cogs_t_minus_1)
     ccc_t_minus_1 = dso_t_minus_1 + dio_t_minus_1 - dpo_t_minus_1
 
     gm_t = (inp.sales_t - inp.cogs_t) / inp.sales_t
