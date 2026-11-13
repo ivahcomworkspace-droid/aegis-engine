@@ -20,7 +20,10 @@ import matplotlib.patches as patches
 try:
     from aegis_engine.schemas.credit_models import (
         ComprehensiveCreditAssessment,
+        ComprehensiveCreditResponse,
         IFRS9StageInput,
+        AegisInternalRiskBand,
+        DEFAULT_REGULATORY_DISCLAIMER,
     )
     from aegis_engine.core.vasicek import (
         calculate_vasicek_loss_distribution,
@@ -29,7 +32,10 @@ try:
 except ModuleNotFoundError:
     from schemas.credit_models import (
         ComprehensiveCreditAssessment,
+        ComprehensiveCreditResponse,
         IFRS9StageInput,
+        AegisInternalRiskBand,
+        DEFAULT_REGULATORY_DISCLAIMER,
     )
     from core.vasicek import (
         calculate_vasicek_loss_distribution,
@@ -88,7 +94,7 @@ def _reconcile_assessment(assessment: ComprehensiveCreditAssessment) -> Tuple[Co
     else:
         stage_desc = f"Classified under IFRS 9 as Stage 3 (Credit-Impaired) with lifetime ECL allowance of ${total_ecl:,.0f} ({ecl_pct:.2f}%)."
 
-    if assessment.forensics_applicable:
+    if not getattr(f, "is_financial_institution", False):
         forensic_clause = (
             f"Altman Z'' of {f.altman.z_double_prime:.2f} ({f.altman.zone}), and Beneish M-Score of {f.beneish.m_score:.2f} "
             f"({'MANIPULATION ALERT' if f.beneish.is_manipulator else 'CLEAN'})"
@@ -98,7 +104,7 @@ def _reconcile_assessment(assessment: ComprehensiveCreditAssessment) -> Tuple[Co
         forensic_clause = "forensic scores shown for reference only (calibrated on non-financial companies)"
         f = f.model_copy(update={"summary_findings": [
             "Financial-sector borrower: Beneish, Altman Z'' and cash-cycle scores are calibrated on non-financial "
-            "companies and were excluded from the rating."
+            "companies and were excluded from the risk band."
         ]})
 
     reconciled_summary = (
@@ -311,7 +317,25 @@ def generate_credit_memo_html(assessment: ComprehensiveCreditAssessment) -> str:
     ecl = assessment.ifrs9_ecl
     stage_badge = f"Stage {ecl.assigned_stage}"
 
-    rating_color = "#059669" if assessment.composite_rating in ["AAA", "AA", "A", "BBB"] else "#dc2626"
+    band_text = (
+        getattr(assessment, "internal_risk_band", None)
+        or getattr(assessment, "composite_rating", None)
+        or getattr(assessment, "credit_rating", "Band 4 (Acceptable)")
+    )
+    disclaimer_text = (
+        getattr(assessment, "regulatory_disclaimer", None)
+        or DEFAULT_REGULATORY_DISCLAIMER
+    )
+
+    if any(b in band_text for b in ["Band 1", "Band 2", "Band 3"]):
+        rating_color = "#059669"
+    elif any(b in band_text for b in ["Band 4"]):
+        rating_color = "#0284c7"
+    elif any(b in band_text for b in ["Band 5"]):
+        rating_color = "#d97706"
+    else:
+        rating_color = "#dc2626"
+
     stage_color = "#059669" if ecl.assigned_stage == 1 else ("#d97706" if ecl.assigned_stage == 2 else "#dc2626")
 
     red_flags_html = "".join([f"<li>{rf}</li>" for rf in f.beneish.red_flags])
@@ -341,8 +365,8 @@ def generate_credit_memo_html(assessment: ComprehensiveCreditAssessment) -> str:
       color: #64748b;
     }}
     @bottom-left {{
-      content: "CONFIDENTIAL // INSTITUTIONAL CREDIT UNDERWRITING";
-      font-size: 8pt;
+      content: "AEGIS INTERNAL RISK MODEL // FOR SCREENING PURPOSES ONLY";
+      font-size: 7.5pt;
       font-weight: bold;
       color: #64748b;
     }}
@@ -494,8 +518,8 @@ def generate_credit_memo_html(assessment: ComprehensiveCreditAssessment) -> str:
     <span>{assessment.company_name} {f"({assessment.ticker})" if assessment.ticker else ""}</span>
   </div>
   <div class="meta-cell">
-    <strong>Composite Rating</strong>
-    <span style="color: {rating_color};">{assessment.composite_rating}</span>
+    <strong>Internal Risk Band</strong>
+    <span style="color: {rating_color}; font-weight: 700;">{band_text}</span>
   </div>
   <div class="meta-cell">
     <strong>IFRS 9 Staging</strong>
@@ -508,8 +532,8 @@ def generate_credit_memo_html(assessment: ComprehensiveCreditAssessment) -> str:
 </div>
 
 <div class="recommendation-box">
-  <strong style="color: #1e3a8a; text-transform: uppercase; font-size: 8.5pt;">Underwriting Committee Directive</strong>
-  <div style="font-size: 10pt; font-weight: 700; margin-top: 2px; color: #0f172a;">{rec_directive}</div>
+  <strong style="color: #1e3a8a; text-transform: uppercase; font-size: 8.5pt;">Indicative Underwriting Stance</strong>
+  <div style="font-size: 9.5pt; font-weight: 700; margin-top: 2px; color: #0f172a;">{rec_directive}</div>
   <p style="margin: 4px 0 0 0; font-size: 8.5pt; color: #334155;">{assessment.executive_summary}</p>
 </div>
 
@@ -605,6 +629,10 @@ def generate_credit_memo_html(assessment: ComprehensiveCreditAssessment) -> str:
   </tbody>
 </table>
 
+<div class="disclaimer-box" style="margin-top: 6px; padding: 4px 8px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px; font-size: 6pt; color: #64748b; line-height: 1.25; text-align: justify; page-break-inside: avoid;">
+  <strong>DISCLAIMER:</strong> {disclaimer_text}
+</div>
+
 </body>
 </html>
 """
@@ -686,10 +714,20 @@ def generate_credit_memo_pdf_reportlab(assessment: ComprehensiveCreditAssessment
     ecl = assessment.ifrs9_ecl
     stage_badge = f"Stage {ecl.assigned_stage}"
 
+    band_text = (
+        getattr(assessment, "internal_risk_band", None)
+        or getattr(assessment, "composite_rating", None)
+        or getattr(assessment, "credit_rating", "Band 4 (Acceptable)")
+    )
+    disclaimer_text = (
+        getattr(assessment, "regulatory_disclaimer", None)
+        or DEFAULT_REGULATORY_DISCLAIMER
+    )
+
     meta_data = [
         [
             Paragraph("<b>Borrower:</b> " + assessment.company_name, body_style),
-            Paragraph("<b>Rating:</b> " + assessment.composite_rating, body_style),
+            Paragraph("<b>Risk Band:</b> " + band_text, body_style),
             Paragraph(f"<b>IFRS 9:</b> {stage_badge}", body_style),
             Paragraph(f"<b>Total ECL:</b> ${ecl.total_ecl:,.0f}", body_style)
         ]
@@ -703,8 +741,8 @@ def generate_credit_memo_pdf_reportlab(assessment: ComprehensiveCreditAssessment
     story.append(meta_table)
     story.append(Spacer(1, 10))
 
-    # Committee Directive
-    rec_text = f"<b>Underwriting Directive:</b> {rec_directive}<br/>{assessment.executive_summary}"
+    # Indicative Stance
+    rec_text = f"<b>Indicative Stance:</b> {rec_directive}<br/>{assessment.executive_summary}"
     rec_data = [[Paragraph(rec_text, body_style)]]
     rec_table = Table(rec_data, colWidths=[7.0*inch])
     rec_table.setStyle(TableStyle([
@@ -774,6 +812,8 @@ def generate_credit_memo_pdf_reportlab(assessment: ComprehensiveCreditAssessment
     story.append(Paragraph("3. Regulatory Loss Distribution & IFRS 9 Multi-Period ECL", section_heading))
     img3 = Image(io.BytesIO(charts['vasicek_loss_dist']), width=6.8*inch, height=1.9*inch)
     story.append(img3)
+    story.append(Spacer(1, 4))
+    story.append(Paragraph(f"<font size='5' color='#64748b'><b>DISCLAIMER:</b> {disclaimer_text}</font>", body_style))
 
     doc.build(story)
     return pdf_buffer.getvalue()

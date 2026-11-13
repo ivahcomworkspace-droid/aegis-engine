@@ -634,25 +634,38 @@ def extract_financials(facts: CompanyFacts, bank: bool) -> Tuple[Optional[Annual
     if missing:
         return None, [f"The annual reports don't tag {', '.join(missing)}, so the memo keeps sample financials."]
 
-    optional_zero = {
-        "cogs": COST_OF_SALES, "receivables": RECEIVABLES, "current_assets": CURRENT_ASSETS, "ppe": PPE,
-        "inventory": INVENTORY, "accounts_payable": PAYABLES, "securities": SECURITIES,
+    # Lines a company may legitimately not report (a bank has no cost of sales or inventory). They
+    # count as 0, and every one that does is listed in the notes, so nothing is defaulted silently
+    # (AGENT_RULES.md rule 1).
+    zero_filled: List[str] = []
+
+    def reported_or_zero(field_name: str, label: str, found: Optional[float]) -> None:
+        if found is None:
+            zero_filled.append(label)
+        values[field_name] = max(found or 0.0, 0.0)
+
+    optional_lines = {
+        "cogs": ("cost of sales", COST_OF_SALES), "receivables": ("receivables", RECEIVABLES),
+        "current_assets": ("current assets", CURRENT_ASSETS), "ppe": ("property, plant and equipment", PPE),
+        "inventory": ("inventory", INVENTORY), "accounts_payable": ("accounts payable", PAYABLES),
+        "securities": ("marketable securities", SECURITIES),
     }
-    for name, concepts in optional_zero.items():
-        is_flow = name == "cogs"
+    for name, (label, concepts) in optional_lines.items():
         for suffix, end in (("t", t), ("t_minus_1", t1)):
-            found = flow(concepts, end) if is_flow else stock(concepts, end)
-            values[f"{name}_{suffix}"] = max(found or 0.0, 0.0)
+            found = flow(concepts, end) if name == "cogs" else stock(concepts, end)
+            reported_or_zero(f"{name}_{suffix}", f"{label} ({end[:4]})", found)
     for suffix, end in (("t", t), ("t_minus_1", t1)):
-        values[f"depreciation_{suffix}"] = max(flow(DEPRECIATION, end) or 0.0, 0.0)
-        values[f"sga_{suffix}"] = max(sga(end) or 0.0, 0.0)
+        reported_or_zero(f"depreciation_{suffix}", f"depreciation ({end[:4]})", flow(DEPRECIATION, end))
+        reported_or_zero(f"sga_{suffix}", f"SG&A ({end[:4]})", sga(end))
         values[f"long_term_debt_{suffix}"] = extract_debt(facts, end, bank).long_term_m
-    values["current_liabilities_t"] = max(stock(CURRENT_LIABILITIES, t) or 0.0, 0.0)
+    reported_or_zero("current_liabilities_t", f"current liabilities ({t[:4]})", stock(CURRENT_LIABILITIES, t))
+    if zero_filled:
+        notes.append("Not reported in the annual reports, so counted as 0: " + ", ".join(zero_filled) + ".")
 
     # Temporary (mezzanine) equity can leave assets - liabilities - equity off by more than the
-    # schema's 5% tolerance; it is then counted with liabilities.
+    # schema's 1% tolerance; it is then counted with liabilities.
     gap = values["total_assets_t"] - values["total_liabilities_t"] - values["book_value_equity_t"]
-    if abs(gap) > 0.04 * values["total_assets_t"]:
+    if abs(gap) > 0.005 * values["total_assets_t"]:
         values["total_liabilities_t"] = round(values["total_assets_t"] - values["book_value_equity_t"], 3)
         notes.append("Temporary equity is counted with liabilities so the balance sheet reconciles.")
 
@@ -693,6 +706,10 @@ def build_sec_snapshot(facts_raw: Dict[str, Any], submissions: Dict[str, Any]) -
     debt = extract_debt(facts, on, bank)
     shares = extract_shares(facts, on)
     financials, financial_notes = extract_financials(facts, bank)
+    financial = bank or is_financial_company(sic)
+    if financials:
+        # The forensic models step aside for banks, insurers and other financial institutions
+        financials.forensic_input["is_financial_institution"] = financial
     equity = facts.first_instant(TOTAL_EQUITY, on)
 
     return {
@@ -700,7 +717,7 @@ def build_sec_snapshot(facts_raw: Dict[str, Any], submissions: Dict[str, Any]) -
         "sic": str(sic) if sic else None,
         "sic_description": (submissions or {}).get("sicDescription") or None,
         "is_bank": bank,
-        "is_financial": bank or is_financial_company(sic),
+        "is_financial": financial,
         "balance_sheet_date": on,
         "balance_sheet_form": sheet.get("form"),
         "balance_sheet_filed": sheet.get("filed"),
@@ -1273,7 +1290,7 @@ def assemble_borrower(
         kind = "bank" if snapshot.get("is_bank") else "financial company"
         warnings.append(
             f"Forensic scores (Beneish, Altman, cash cycle) are built for non-financial companies, so they don't "
-            f"count toward this {kind}'s rating."
+            f"count toward this {kind}'s risk band."
         )
     elif financials and not financials["forensic_input"].get("cogs_t"):
         warnings.append("No cost of sales is reported, so the cash cycle counts receivable days only.")

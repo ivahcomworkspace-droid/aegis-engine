@@ -3,7 +3,9 @@ Aegis Perimeter Defense: Pydantic v2 Strict Validation Models.
 Enforces double-entry balance sheet identities, volatility bounds, and physical constraints.
 """
 
-from typing import Optional, List, Dict, Any
+from enum import Enum
+from typing import Optional, List, Dict, Any, Union
+from datetime import datetime, timezone
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -40,8 +42,11 @@ class MertonOutput(BaseModel):
     distance_to_default_risk_neutral: float = Field(..., description="Risk-Neutral Distance-to-Default (DD_RN)")
     default_probability_risk_neutral: float = Field(..., description="Risk-Neutral Probability of Default (Phi(-DD_RN))")
     credit_spread_bps: float = Field(..., description="Risk-neutral theoretical credit spread in basis points")
+    structural_merton_spread_bps: Optional[float] = Field(default=None, description="Exact structural Merton credit spread in basis points")
     solver_converged: bool = Field(..., description="Whether Powell hybrid solver converged successfully")
     solver_message: str = Field(..., description="Solver exit flag / diagnostics")
+    solver_used: Optional[str] = Field(default=None, description="Solver method used ('hybr', 'trf_fallback', 'zero_debt_exact')")
+    residual_norm: Optional[float] = Field(default=None, description="L2 norm of dimensionless Merton system residuals")
     solver_time_ms: float = Field(..., description="Wall-clock solver time in milliseconds")
     leverage_ratio: float = Field(..., description="Debt barrier to Asset value ratio (D / V_A)")
 
@@ -94,13 +99,13 @@ class ForensicAnalysisRequest(BaseModel):
     @model_validator(mode='after')
     def validate_double_entry_reconciliation(self):
         implied_equity = self.total_assets_t0 - self.total_liabilities_t0
-        tolerance = 0.05 * self.total_assets_t0
+        tolerance = 0.01 * self.total_assets_t0
         if abs(implied_equity - self.book_value_equity_t0) > tolerance:
             raise ValueError(
                 f"Double-Entry Identity Violation: Total Assets ({self.total_assets_t0}) - "
                 f"Total Liabilities ({self.total_liabilities_t0}) = {implied_equity:.2f}, "
                 f"which does not reconcile with Book Equity ({self.book_value_equity_t0}) "
-                f"within 5% tolerance."
+                f"within 1% tolerance."
             )
         return self
 
@@ -110,6 +115,10 @@ class ForensicInput(BaseModel):
     Institutional balance sheet and financial statement data across period t and t-1.
     Enforces balance sheet sanity checks and identity relations.
     """
+    # Financial institution domain guard
+    is_financial_institution: bool = Field(default=False, description="Flag indicating borrower is a bank, insurer, or financial institution")
+    domain_warning: Optional[str] = Field(default=None, description="Domain limitation notice")
+
     # Current period (t)
     sales_t: float = Field(..., gt=0, description="Revenue / Sales in period t")
     cogs_t: float = Field(..., ge=0, description="Cost of Goods Sold in period t")
@@ -160,6 +169,22 @@ class ForensicInput(BaseModel):
             raise ValueError(
                 f"Prior period current assets ({self.current_assets_t_minus_1}) exceeds total assets ({self.total_assets_t_minus_1})"
             )
+
+        # Fix S2: Balance sheet accounting identity validator (tolerance <= 0.01 * Assets)
+        if (
+            self.total_assets_t is not None
+            and self.total_liabilities_t is not None
+            and self.book_value_equity_t is not None
+        ):
+            implied_equity = self.total_assets_t - self.total_liabilities_t
+            tolerance = 0.01 * self.total_assets_t
+            if abs(implied_equity - self.book_value_equity_t) > tolerance:
+                raise ValueError(
+                    f"Balance-Sheet Identity Violation: Total Assets ({self.total_assets_t}) - "
+                    f"Total Liabilities ({self.total_liabilities_t}) = {implied_equity:.2f}, "
+                    f"which does not reconcile with Book Equity ({self.book_value_equity_t}) "
+                    f"within 1% tolerance."
+                )
         return self
 
 
@@ -173,9 +198,12 @@ class BeneishResult(BaseModel):
     lvgi: float = Field(..., description="Leverage Index")
     tata: float = Field(..., description="Total Accruals to Total Assets")
     m_score: float = Field(..., description="Beneish 8-Factor M-Score")
-    manipulation_probability: float = Field(..., description="Probabilistic likelihood of manipulation Phi(M)")
+    m_score_probit_index: float = Field(..., description="Cumulative normal probit index Phi(M)")
+    manipulation_probability: float = Field(..., description="Deprecated alias for m_score_probit_index")
     is_manipulator: bool = Field(..., description="True if M-Score > -1.78 (active red flag threshold)")
     red_flags: List[str] = Field(default_factory=list, description="Specific sub-indices indicating forensic anomalies")
+    domain_warning: Optional[str] = Field(default=None, description="Domain limitation notice")
+    data_quality_flags: List[str] = Field(default_factory=list, description="Explicit warnings for missing or non-computable metrics")
 
 
 class AltmanResult(BaseModel):
@@ -186,6 +214,7 @@ class AltmanResult(BaseModel):
     z_double_prime: float = Field(..., description="Altman Z''-Score (Services & Emerging Markets)")
     zone: str = Field(..., description="Classification Zone: Safe, Grey, or Distress")
     distress_assessment: str = Field(..., description="Executive interpretation of insolvency likelihood")
+    domain_warning: Optional[str] = Field(default=None, description="Domain limitation notice")
 
 
 class CCCResult(BaseModel):
@@ -201,6 +230,7 @@ class CCCResult(BaseModel):
     delta_gross_margin: float = Field(..., description="Change in Gross Profit Margin (percentage points)")
     warning_triggered: bool = Field(..., description="Alert if Delta CCC > +20 days while Gross Margin is static")
     alert_message: Optional[str] = Field(default=None, description="Actionable working capital stress diagnostic")
+    domain_warning: Optional[str] = Field(default=None, description="Domain limitation notice")
 
 
 class ForensicAnalysisResult(BaseModel):
@@ -209,6 +239,8 @@ class ForensicAnalysisResult(BaseModel):
     ccc: CCCResult
     composite_forensic_risk: str = Field(..., description="Composite risk tier: Low, Medium, High, or Critical")
     summary_findings: List[str] = Field(default_factory=list, description="Forensic credit investigator bullet findings")
+    is_financial_institution: bool = Field(default=False, description="Whether entity is a financial institution")
+    domain_warning: Optional[str] = Field(default=None, description="Domain limitation notice")
 
 
 class VasicekInput(BaseModel):
@@ -307,6 +339,7 @@ class ComprehensiveCreditRequest(BaseModel):
     # Forensic & Stress Simulation Flags
     simulate_beneish_manipulation: bool = Field(False)
     simulate_working_capital_stress: bool = Field(False)
+    is_financial_institution: bool = Field(default=False, description="Flag indicating borrower is a bank, insurer, or financial institution")
 
     # Optional nested wrappers for backward compatibility
     merton_input: Optional[MertonInput] = Field(default=None)
@@ -315,10 +348,6 @@ class ComprehensiveCreditRequest(BaseModel):
     days_past_due: int = Field(default=0, ge=0)
     effective_interest_rate: float = Field(default=0.06, ge=0.0)
     loan_tenor_years: int = Field(default=5, ge=1, le=30)
-    forensics_applicable: bool = Field(
-        default=True,
-        description="False for financial companies (banks, insurers, real estate): forensic scores are then excluded from the rating",
-    )
 
     @model_validator(mode='before')
     @classmethod
@@ -339,6 +368,7 @@ class ComprehensiveCreditRequest(BaseModel):
                 data.setdefault("total_assets", f_in.get("total_assets_t"))
                 data.setdefault("total_liabilities", f_in.get("total_liabilities_t"))
                 data.setdefault("book_value_equity", f_in.get("book_value_equity_t"))
+                data.setdefault("is_financial_institution", f_in.get("is_financial_institution", False))
                 wc = f_in.get("working_capital_t")
                 if wc is None and "current_assets_t" in f_in and "current_liabilities_t" in f_in:
                     wc = float(f_in.get("current_assets_t", 0.0)) - float(f_in.get("current_liabilities_t", 0.0))
@@ -355,27 +385,97 @@ class ComprehensiveCreditRequest(BaseModel):
     @model_validator(mode='after')
     def validate_balance_sheet(self):
         implied_equity = self.total_assets - self.total_liabilities
-        tolerance = 0.05 * self.total_assets
+        tolerance = 0.01 * self.total_assets
         if abs(implied_equity - self.book_value_equity) > tolerance:
             raise ValueError(
                 f"Accounting Identity Failure: Assets ({self.total_assets}) - "
-                f"Liabilities ({self.total_liabilities}) != Book Equity ({self.book_value_equity})"
+                f"Liabilities ({self.total_liabilities}) != Book Equity ({self.book_value_equity}) "
+                f"within 1% tolerance."
             )
         return self
 
 
-class ComprehensiveCreditAssessment(BaseModel):
-    company_name: str
-    ticker: Optional[str] = None
-    timestamp: str
-    merton: MertonOutput
-    forensics: ForensicAnalysisResult
-    vasicek: VasicekOutput
-    ifrs9_ecl: ECLResult
-    composite_rating: str = Field(..., description="Institutional credit rating (e.g. AAA, AA, A, BBB, BB, B, CCC, D)")
-    recommendation: str = Field(..., description="Institutional credit committee underwriting directive")
-    executive_summary: str = Field(..., description="Comprehensive risk appraisal memo text")
-    forensics_applicable: bool = Field(default=True, description="Whether forensic scores informed the rating")
+class AegisInternalRiskBand(str, Enum):
+    BAND_1 = "Band 1 (Minimal Credit Risk)"
+    BAND_2 = "Band 2 (Low Credit Risk)"
+    BAND_3 = "Band 3 (Moderate Credit Risk)"
+    BAND_4 = "Band 4 (Acceptable / Monitored)"
+    BAND_5 = "Band 5 (Special Mention / Elevated)"
+    BAND_6 = "Band 6 (High Risk / Substandard)"
+    BAND_7 = "Band 7 (Impaired / Default Risk)"
+
+
+DEFAULT_REGULATORY_DISCLAIMER = (
+    "Aegis internal risk bands and default metrics are uncalibrated quantitative model outputs "
+    "derived from mathematical simplifications. They do not constitute credit ratings from an NRSRO "
+    "or formalized credit committee approvals."
+)
+
+
+class ComprehensiveCreditResponse(BaseModel):
+    ticker: Optional[str] = Field(default=None, description="Borrower equity ticker / identifier")
+    company_name: str = Field(..., description="Legal corporate borrower name")
+    internal_risk_band: str = Field(
+        ...,
+        description="Aegis model-implied proprietary risk band (Band 1 through Band 7)"
+    )
+    indicative_stance: str = Field(
+        ...,
+        description="Non-binding underwriting posture (e.g., INDICATIVE: LOW RISK / MONITOR)"
+    )
+    # Retained for backwards-compatibility; mapped directly to internal_risk_band
+    credit_rating: str = Field(
+        ...,
+        description="Internal model risk band (formerly credit rating)"
+    )
+    recommendation: str = Field(
+        ...,
+        description="Indicative stance (formerly binary recommendation)"
+    )
+    regulatory_disclaimer: str = Field(
+        default=DEFAULT_REGULATORY_DISCLAIMER,
+        description="Model output screening disclaimer (not a credit rating or investment advice)"
+    )
+    merton: Union[MertonOutput, Dict[str, Any]]
+    forensics: Union[ForensicAnalysisResult, Dict[str, Any]]
+    regulatory_capital: Union[VasicekOutput, Dict[str, Any]]
+    ifrs9_ecl: Union[ECLResult, Dict[str, Any]]
+
+    # Backwards compatibility fields for legacy clients, tests, and memo generator
+    composite_rating: Optional[str] = Field(
+        default=None,
+        description="Legacy alias for internal_risk_band"
+    )
+    vasicek: Optional[Union[VasicekOutput, Dict[str, Any]]] = Field(
+        default=None,
+        description="Legacy alias for regulatory_capital"
+    )
+    timestamp: str = Field(
+        default_factory=lambda: datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+        description="Evaluation UTC timestamp"
+    )
+    executive_summary: Optional[str] = Field(
+        default=None,
+        description="Quantitative risk appraisal narrative"
+    )
+
+    @model_validator(mode='after')
+    def sync_backwards_compatibility(self) -> 'ComprehensiveCreditResponse':
+        if not self.credit_rating:
+            self.credit_rating = self.internal_risk_band
+        if not self.composite_rating:
+            self.composite_rating = self.internal_risk_band
+        if not self.recommendation:
+            self.recommendation = self.indicative_stance
+        if self.vasicek is None and self.regulatory_capital is not None:
+            self.vasicek = self.regulatory_capital
+        elif self.regulatory_capital is None and self.vasicek is not None:
+            self.regulatory_capital = self.vasicek
+        return self
+
+
+# Backwards compatibility alias
+ComprehensiveCreditAssessment = ComprehensiveCreditResponse
 
 
 class MarketDataPoint(BaseModel):
@@ -403,7 +503,10 @@ class BorrowerMarketData(BaseModel):
     risk_free_rate: MarketDataPoint
     forensic_input: Optional[ForensicInput] = Field(default=None, description="Last two annual reports, $M")
     forensic_analysis: Optional[ForensicAnalysisResult] = None
-    forensics_applicable: bool = Field(default=True, description="False for financial companies (SIC 6000-6999)")
+    forensics_applicable: bool = Field(
+        default=True,
+        description="False for financial companies (SIC 6000-6999); their forensic_input sets is_financial_institution",
+    )
     fiscal_year_end: Optional[str] = None
     prior_fiscal_year_end: Optional[str] = None
     warnings: List[str] = Field(default_factory=list)

@@ -19,6 +19,8 @@ from .vasicek import (
     calculate_ecl_staging_and_loss,
     calculate_vasicek_loss_distribution,
     calculate_corporate_asset_correlation,
+    calculate_asset_correlation,
+    calculate_basel_correlation,
     calculate_vasicek_conditional_pd,
 )
 
@@ -39,5 +41,7 @@ __all__ = [
     "calculate_ecl_staging_and_loss",
     "calculate_vasicek_loss_distribution",
     "calculate_corporate_asset_correlation",
+    "calculate_asset_correlation",
+    "calculate_basel_correlation",
     "calculate_vasicek_conditional_pd",
 ]

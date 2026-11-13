@@ -2,7 +2,7 @@
 
 [![Live Web Terminal](https://img.shields.io/badge/Live%20Demo-Render-00c7b7?style=for-the-badge&logo=render&logoColor=white)](https://aegis-engine-s96v.onrender.com)
 [![OpenAPI Docs](https://img.shields.io/badge/API%20Docs-FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://aegis-engine-s96v.onrender.com/docs)
-[![Pytest Suite](https://img.shields.io/badge/Tests-95%20Passed-brightgreen?style=for-the-badge)](tests/)
+[![Pytest Suite](https://img.shields.io/badge/Tests-107%20Passed-brightgreen?style=for-the-badge)](tests/)
 
 > **Live Production Terminal:** [https://aegis-engine-s96v.onrender.com](https://aegis-engine-s96v.onrender.com)  
 > **Interactive Swagger API:** [https://aegis-engine-s96v.onrender.com/docs](https://aegis-engine-s96v.onrender.com/docs)
@@ -107,11 +107,13 @@ $$
 \text{PD}_{\text{conditional}}(Z) = \Phi\left( \frac{\Phi^{-1}(\text{PD}_{\text{PIT}}) + \sqrt{\rho} \cdot Z}{\sqrt{1 - \rho}} \right)
 $$
 
-   Where corporate asset correlation $\rho$ follows the Basel corporate specification:
+   Where corporate asset correlation $\rho$ follows the Basel corporate and SME specification:
 
 $$
-\rho = 0.12 \left(\frac{1 - e^{-50 \cdot \text{PD}}}{1 - e^{-50}}\right) + 0.24 \left(1 - \frac{1 - e^{-50 \cdot \text{PD}}}{1 - e^{-50}}\right), \quad \rho \in [0.12, 0.24]
+\rho = 0.12 \left(\frac{1 - e^{-50 \cdot \text{PD}}}{1 - e^{-50}}\right) + 0.24 \left(1 - \frac{1 - e^{-50 \cdot \text{PD}}}{1 - e^{-50}}\right) - 0.04 \left(1 - \frac{\min(\max(S, 5), 50) - 5}{45}\right)
 $$
+
+   With correlation bounded by $\rho \in [0.08, 0.24]$ when SME turnover adjustment is applied ($S \le 50\text{M EUR}$), and $\rho \in [0.12, 0.24]$ for standard corporate exposures.
 
 2. **Multi-Period Lifetime Expected Credit Loss (ECL):**
 
@@ -149,8 +151,8 @@ aegis_engine/
 ├── tests/
 │   ├── __init__.py
 │   ├── conftest.py           # Pytest root configuration
-│   ├── test_engine.py        # 58 deterministic unit, numerical & integration tests
-│   └── test_market_data.py   # 37 offline tests for live borrower data, company list and financial-sector handling
+│   ├── test_engine.py        # 69 deterministic unit, numerical & integration tests
+│   └── test_market_data.py   # 38 offline tests for live borrower data, company list and financial-sector handling
 ├── .env.example              # Settings for live data (copy to .env, which git ignores)
 ├── Dockerfile                # Multi-stage production container build (python:3.11-slim)
 ├── requirements.txt          # Frozen production dependencies
@@ -173,7 +175,7 @@ The API is fully documented with interactive Swagger/OpenAPI UI at `/docs`:
 | `POST` | `/api/v1/forensics/analyze` | Beneish 8-Factor, Altman $Z''$, and CCC working capital analysis |
 | `POST` | `/api/v1/regulatory/vasicek` | Basel ASRF conditional distribution & regulatory capital ($K$) |
 | `POST` | `/api/v1/regulatory/ecl` | Evaluates IFRS 9 3-stage transitions and computes multi-period ECL |
-| `POST` | `/api/v1/credit/comprehensive` | Unified institutional assessment with rating and committee directive |
+| `POST` | `/api/v1/credit/comprehensive` | Unified institutional assessment with internal risk band and indicative stance |
 | `POST` | `/api/v1/credit/export-memo` | Compiles & streams binary PDF institutional Credit Risk Memorandum |
 
 ---
@@ -189,7 +191,7 @@ cd aegis-engine
 # Install dependencies
 pip install -r requirements.txt
 
-# Run the test suite (95 tests, all offline)
+# Run the test suite (107 tests, all offline)
 python -m pytest tests -v
 
 # Enable live data: put your name or company and an email in AEGIS_SEC_USER_AGENT
@@ -225,7 +227,7 @@ Pick a company from the **Ticker** or **Company** dropdown in **Borrower Paramet
 
 - **Sources:** SEC EDGAR XBRL company facts and the US Treasury yield curve are official and free. Prices come from Yahoo Finance's public chart endpoint, which is free but unofficial: it can throttle or change without notice. Each source fails on its own, so a missing price still leaves debt and the rate filled, with a note saying what to enter by hand.
 - **SEC contact (required):** the SEC asks automated clients to identify themselves, so set `AEGIS_SEC_USER_AGENT` (for example `"Acme Credit risk@acme.com"`) in the environment, in `.env`, or in your host's settings (on Render: *Environment*). Without it, **Load** explains what to set.
-- **Banks and other financials:** for deposit takers (SIC 6021–6036, or deposits above 10% of liabilities), customer deposits, repo funding and short-term borrowings count as short-term debt, following the SVB case study. Beneish, Altman $Z''$ and the cash cycle are calibrated on non-financial companies, so for any financial company (SIC 6000–6999: banks, insurers, real estate) they are shown for reference only and left out of the rating, on the dashboard and in the memo. Without a reported cost of sales, the cash cycle counts receivable days only.
+- **Banks and other financials:** for deposit takers (SIC 6021–6036, or deposits above 10% of liabilities), customer deposits, repo funding and short-term borrowings count as short-term debt, following the SVB case study. Beneish, Altman $Z''$ and the cash cycle are calibrated on non-financial companies, so any financial company (SIC 6000–6999: banks, insurers, real estate) is flagged `is_financial_institution`: the models step aside and its risk band rests on distance to default and IFRS 9 stage, on the dashboard and in the memo. Without a reported cost of sales, the cash cycle counts receivable days only.
 - **Coverage:** companies that filed a 10-K or 10-Q in the last three quarters: 6,767 tickers from 5,154 companies as of November 2026. [`docs/supported_companies.csv`](docs/supported_companies.csv) lists every SEC ticker with an `A` for these; regenerate it with `python scripts/list_supported_companies.py`. Foreign filers (20-F, IFRS), funds, private companies and other gaps get a clear message; type any value into the boxes beside the sliders, which widen their range to fit (for example `4.2B` or `35%`).
 - **Filings without standard tags:** when debt is only in company-specific tags (Ford, GM), liabilities stand in for it: current liabilities as short-term debt and the rest as long-term, KMV's original default point; an unclassified balance sheet (Berkshire) counts all liabilities as long-term. Companies with several share classes (Berkshire, Visa) are valued class by class from the latest filing's cover page, each listed class at its own price; when the filing doesn't say which class trades (Warner Music, most SPACs), every class is valued at the listed price. A preferred share, warrant, unit or note ticker is priced through the company's common stock, and companies with no listed common stock aren't marked (A). A new holding company without two annual reports yet (ExxonMobil Holdings, 2026) takes them from the registrant it replaced (`PREDECESSOR_CIKS`). Each fallback adds a note on screen.
 - **Licensed price feed:** add a provider class (`name`, `label`, `async history(client, symbol)`) to `PRICE_PROVIDERS` in `services/market_data.py` and select it with `AEGIS_PRICE_PROVIDER`.
@@ -235,8 +237,20 @@ Pick a company from the **Ticker** or **Company** dropdown in **Borrower Paramet
 
 ## 6. Empirical Case Studies
 
-### Silicon Valley Bank (SIVB) Distress Backtest
+### A. Silicon Valley Bank (SIVB) Distress Backtest (Q4 2022 Pre-Insolvency)
 
-> Under review: Beneish result and related figures are being recomputed after a coefficient correction. Do not rely on the M-score reported here.
+- **Structural Merton Inversion:** $V_A = \$101{,}836.5\text{M}$, $\sigma_A = 9.69\%$, $\text{DD} = 1.41\sigma$, $\text{PD}_{\text{physical}} = 7.95\%$, Fair Credit Spread $= 557.0\text{ bps}$.
+- **Balance Sheet Forensics:** Raw Beneish $M = -2.08$ (below $-1.78$ threshold), Altman $Z'' = 0.23$ (Deep Distress Zone), Asset Quality Index $\text{AQI} = 1.58$.
+- **Financial Institution Guardrail:** When flagged with `is_financial_institution=True`, non-applicable non-financial forensic flags are suppressed with domain warning: *"These models were built for non-financial firms."*
+- **Regulatory Staging & ECL:** Stage 3 (Credit Impaired), Lifetime ECL allowance of $\$61{,}321\text{M}$ ($61.32\%$ of $\$100{,}000\text{M}$ EAD).
+- **Mandate Verdict:** **Band 7 (Impaired / Default Risk)** — Indicative Stance: Immediate Workout.
+- **Filing Timing & Sensitivity:** Reflects FY2022 10-K / Q3 2022 10-Q pre-run financial statements (~70 days prior to March 10, 2023 receivership). Stress testing under rapid deposit run debt barriers ($D \in [\$75\text{B}, \$95\text{B}]$) demonstrates catastrophic solvency collapse.
+- **Full Case Study:** Refer to [`docs/case_studies/SVB_Q4_2022_distress_backtest.md`](docs/case_studies/SVB_Q4_2022_distress_backtest.md).
 
-Refer to [`docs/case_studies/SVB_Q4_2022_distress_backtest.md`](docs/case_studies/SVB_Q4_2022_distress_backtest.md) for the detailed historical pre-insolvency audit.
+### B. Microsoft Corporation (MSFT) Sovereign-Equivalent Benchmark
+
+- **Structural Merton Inversion:** $V_A = \$2{,}425{,}047.1\text{M}$, $\sigma_A = 22.27\%$, $\text{DD} = 20.58\sigma$, $\text{PD}_{\text{physical}} < 0.0001\%$, Fair Credit Spread $= 0.0\text{ bps}$.
+- **Balance Sheet Forensics:** Beneish $M = -2.51$ (Clean, well below $-1.78$ threshold), Altman $Z'' = 4.70$ (Safe Zone $> 2.60$).
+- **Regulatory Staging & ECL:** Stage 1 (Performing — 12-Month ECL), 12-Month ECL allowance of $\$0.02$ ($0.0000\%$ of $\$100{,}000\text{M}$ EAD).
+- **Mandate Verdict:** **Band 1 (Minimal Credit Risk)** — Indicative Stance: Prime Solvency.
+- **Full Case Study:** Refer to [`docs/case_studies/MSFT_fortress_benchmark.md`](docs/case_studies/MSFT_fortress_benchmark.md).

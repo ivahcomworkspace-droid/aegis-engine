@@ -3,7 +3,7 @@ Aegis Institutional Case Study Reproducibility Runner.
 Executes historical corporate balance sheet data through the quantitative engine.
 Reproduces:
 1. Silicon Valley Bank (SIVB) - Q4 2022 Pre-Collapse Structural Distress & Forensic Audit
-2. Microsoft Corporation (MSFT) - AAA Fortress Sovereign-Equivalent Benchmark
+2. Microsoft Corporation (MSFT) - Sovereign-Equivalent Benchmark (Band 1)
 """
 
 import os
@@ -22,14 +22,14 @@ def run_svb_backtest():
     print("BACKTEST 1: SILICON VALLEY BANK (SIVB) - Q4 2022 PRE-COLLAPSE")
     print("=" * 70)
 
-    # 1. Structural Merton Inversion
+    # 1. Structural Merton Inversion (Me4: risky asset drift mu = 0.045 >= r = 0.0425)
     res = solve_structural_merton(
         equity_market_cap=13500.0,
         equity_volatility=0.68,
         short_term_debt=85000.0,
         long_term_debt=15000.0,
         risk_free_rate=0.0425,
-        asset_drift_mu=0.04,
+        asset_drift_mu=0.045,
         maturity_years=1.0,
         recovery_rate=0.35
     )
@@ -41,7 +41,8 @@ def run_svb_backtest():
     print(f"  Distance-to-Default (DD):      {res['distance_to_default']:.2f} sigma")
     print(f"  Physical Default Prob (PD):    {res['physical_default_prob']*100:.2f}%")
     print(f"  Fair Credit Spread:            {res['implied_credit_spread_bps']:.1f} bps")
-    print(f"  Mandate Verdict:               {'REJECT / DISTRESS' if res['distance_to_default'] < 1.5 else 'REVIEW'}")
+    print(f"  Structural Merton Spread:      {res['structural_merton_spread_bps']:.1f} bps")
+    print(f"  Mandate Verdict:               {'BAND 7 (IMPAIRED / DEFAULT RISK)' if res['distance_to_default'] < 1.5 else 'REVIEW'}")
 
     # 2. Forensic Accounting Diagnostic (Beneish M-Score & Altman Z'')
     # SVB 2022 disclosures: unhedged HTM securities and deposit outflow leverage distortion
@@ -58,6 +59,20 @@ def run_svb_backtest():
         net_income_t=1500.0, cfo_t=-2000.0,
         total_debt_t=195000.0, total_debt_prev=170000.0
     )
+    bank_beneish = calculate_beneish_m_score(
+        sales_t=2500.0, sales_prev=2200.0,
+        cogs_t=1200.0, cogs_prev=1050.0,
+        rec_t=500.0, rec_prev=440.0,
+        ca_t=20000.0, ca_prev=25000.0,
+        ppe_t=2000.0, ppe_prev=2000.0,
+        sec_t=120000.0, sec_prev=140000.0,
+        ta_t=212000.0, ta_prev=211000.0,
+        dep_t=200.0, dep_prev=200.0,
+        sga_t=800.0, sga_prev=750.0,
+        net_income_t=1500.0, cfo_t=-2000.0,
+        total_debt_t=195000.0, total_debt_prev=170000.0,
+        is_financial_institution=True
+    )
     altman_res = calculate_altman_z_double_prime(
         working_capital=-5000.0,
         retained_earnings=15000.0,
@@ -68,18 +83,19 @@ def run_svb_backtest():
     )
 
     print("\n[2] BALANCE SHEET FORENSICS:")
-    print(f"  Beneish M-Score:               {beneish_res['m_score']:.2f}")
-    print(f"  Manipulation Status:           {'MANIPULATOR FLAGGED' if beneish_res['is_manipulator'] else 'CLEAN'} (Threshold: -1.78)")
+    print(f"  Beneish M-Score (Raw):         {beneish_res['m_score']:.2f}")
+    print(f"  Manipulation Status:           {'FLAGGED' if beneish_res['is_manipulator'] else 'CLEAN / BELOW THRESHOLD'} (Threshold: -1.78)")
+    print(f"  Bank Domain Warning:           {bank_beneish['domain_warning']}")
     print(f"  AQI (Asset Quality Index):     {beneish_res['indices']['AQI']:.2f} (Alert if > 1.10)")
     print(f"  LVGI (Leverage Index):         {beneish_res['indices']['LVGI']:.2f} (Alert if > 1.15)")
     print(f"  Altman Z''-Score:              {altman_res['z_double_prime']:.2f} (Zone: {altman_res['zone']})")
 
     # 3. Regulatory Loss Distribution & IFRS 9 ECL
-    # Impaired liquidity run: multi-period Stage 3 schedule
+    # Impaired liquidity run: multi-period Stage 3 schedule fed directly from Merton outputs
     ecl_res = calculate_multi_period_ecl(
-        current_pd=0.1314,
+        current_pd=res['physical_default_prob'],
         origination_distance_to_default=3.5,
-        current_distance_to_default=1.12,
+        current_distance_to_default=res['distance_to_default'],
         days_past_due=90,
         is_credit_impaired=True,
         ead_schedule=[100000.0, 80000.0, 60000.0, 40000.0, 20000.0],
@@ -89,12 +105,12 @@ def run_svb_backtest():
     print(f"  Assigned Staging:              {ecl_res['stage_name']}")
     print(f"  Lifetime ECL Allowance:        ${ecl_res['total_ecl']:,.0f}")
     print(f"  ECL Provisioning % of EAD:     {ecl_res['ecl_percentage_of_ead']:.2f}%")
-    print(f"  Executive Directive:           REJECT / NEAR-TERM REORGANIZATION (6 Mo. Pre-Receivership)")
+    print(f"  Indicative Underwriting Stance: BAND 7 (IMPAIRED / DEFAULT RISK) — IMMEDIATE WORKOUT")
 
 
 def run_msft_benchmark():
     print("\n" + "=" * 70)
-    print("BACKTEST 2: MICROSOFT CORP (MSFT) - AAA FORTRESS BENCHMARK")
+    print("BACKTEST 2: MICROSOFT CORP (MSFT) - SOVEREIGN-EQUIVALENT BENCHMARK")
     print("=" * 70)
 
     # 1. Structural Merton Inversion
@@ -116,7 +132,8 @@ def run_msft_benchmark():
     print(f"  Distance-to-Default (DD):      {res['distance_to_default']:.2f} sigma")
     print(f"  Physical Default Prob (PD):    {res['physical_default_prob']*100:.4f}%")
     print(f"  Fair Credit Spread:            {res['implied_credit_spread_bps']:.1f} bps")
-    print(f"  Mandate Verdict:               {'APPROVE / AAA' if res['distance_to_default'] > 4.5 else 'REVIEW'}")
+    print(f"  Structural Merton Spread:      {res['structural_merton_spread_bps']:.1f} bps")
+    print(f"  Mandate Verdict:               {'BAND 1 (MINIMAL CREDIT RISK)' if res['distance_to_default'] > 4.5 else 'REVIEW'}")
 
     # 2. Forensic Accounting Diagnostic (Beneish M-Score & Altman Z'')
     beneish_res = calculate_beneish_m_score(
@@ -143,14 +160,14 @@ def run_msft_benchmark():
 
     print("\n[2] BALANCE SHEET FORENSICS:")
     print(f"  Beneish M-Score:               {beneish_res['m_score']:.2f}")
-    print(f"  Manipulation Status:           {'MANIPULATOR FLAGGED' if beneish_res['is_manipulator'] else 'CLEAN / SAFE'}")
+    print(f"  Manipulation Status:           {'FLAGGED' if beneish_res['is_manipulator'] else 'CLEAN / BELOW THRESHOLD'}")
     print(f"  Altman Z''-Score:              {altman_res['z_double_prime']:.2f} (Zone: {altman_res['zone']})")
 
-    # 3. Regulatory Loss Distribution & IFRS 9 ECL
+    # 3. Regulatory Loss Distribution & IFRS 9 ECL (Fix T2: Feed actual Merton outputs)
     ecl_res = calculate_multi_period_ecl(
-        current_pd=0.0001,
-        origination_distance_to_default=6.5,
-        current_distance_to_default=6.5,
+        current_pd=max(res['physical_default_prob'], 1e-6),
+        origination_distance_to_default=res['distance_to_default'],
+        current_distance_to_default=res['distance_to_default'],
         days_past_due=0,
         is_credit_impaired=False,
         ead_schedule=[47200.0],
@@ -158,9 +175,9 @@ def run_msft_benchmark():
     )
     print("\n[3] REGULATORY IFRS 9 ECL STAGING:")
     print(f"  Assigned Staging:              {ecl_res['stage_name']}")
-    print(f"  12-Month ECL Allowance:        ${ecl_res['total_ecl']:,.0f}")
+    print(f"  12-Month ECL Allowance:        ${ecl_res['total_ecl']:,.2f}")
     print(f"  ECL Provisioning % of EAD:     {ecl_res['ecl_percentage_of_ead']:.4f}%")
-    print(f"  Executive Directive:           APPROVE / AAA UNCONDITIONAL DIRECTIVE")
+    print(f"  Indicative Underwriting Stance: BAND 1 (MINIMAL CREDIT RISK) / PRIME SOLVENCY")
 
 
 if __name__ == "__main__":

@@ -463,7 +463,7 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    /* Frosted icon tile from the banner, holding the composite rating */
+    /* Frosted icon tile from the banner, holding the internal risk band */
     .uh-hero-tile {
       grid-area: tile;
       display: flex;
@@ -471,8 +471,8 @@
       align-items: center;
       justify-content: center;
       gap: 2px;
-      width: 88px;
-      height: 88px;
+      width: 100px;
+      height: 100px;
       border-radius: var(--uh-radius);
       background: linear-gradient(180deg, var(--uh-white) 0%, var(--uh-tile-end) 100%);
       box-shadow: 0 6px 16px rgba(20, 27, 71, 0.22);
@@ -497,13 +497,14 @@
       .uh-hero-tile-label { font-size: 12px; }
     }
     .uh-hero-rating {
-      font-size: 22px;
+      max-width: 100%;
+      padding: 0 6px;
+      font-size: 14px;
       font-weight: 700;
-      line-height: 1.1;
-      letter-spacing: -0.01em;
+      line-height: 1.2;
     }
     @media (min-width: 640px) {
-      .uh-hero-rating { font-size: 34px; }
+      .uh-hero-rating { font-size: 19px; }
     }
     .uh-hero-tile .material-icons { font-size: 18px; }
     @media (min-width: 640px) {
@@ -1115,9 +1116,9 @@
           <div class="uh-hero-head">
             <div class="uh-hero-eyebrow">
               <span class="material-icons is-sm" aria-hidden="true">gavel</span>
-              <span>Automated Credit Committee Mandate</span>
+              <span>Automated Risk Band Mandate</span>
             </div>
-            <h2 id="directiveTitle" class="uh-hero-title">APPROVE / INVESTMENT GRADE MANDATE</h2>
+            <h2 id="directiveTitle" class="uh-hero-title">INDICATIVE: MINIMAL RISK — SUPERIOR CAPACITY</h2>
           </div>
           <p id="directiveDesc" class="uh-hero-desc">Robust solvency buffer with negligible refinancing friction; asset volatility inversion confirms strong enterprise liquidation coverage.</p>
           <div class="uh-hero-chips">
@@ -1125,8 +1126,8 @@
             <span class="uh-hero-chip"><span class="material-icons is-sm" aria-hidden="true">sell</span><span id="borrowerTicker">APEX</span></span>
           </div>
           <div class="uh-hero-tile">
-            <span class="uh-hero-tile-label">Rating</span>
-            <span id="compositeRatingBadge" class="uh-hero-rating">AAA</span>
+            <span class="uh-hero-tile-label">Risk band</span>
+            <span id="internalRiskBandBadge" class="uh-hero-rating">Band 1 (Minimal)</span>
             <span id="directiveIcon" class="material-icons" aria-hidden="true">check_circle</span>
           </div>
         </div>
@@ -1462,7 +1463,7 @@
   <footer class="uh-footer">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 py-5 flex flex-col sm:flex-row items-center justify-between gap-1 text-center sm:text-left">
       <div>AEGIS Quantitative Structural Credit & Forensics Engine • Institutional Edition</div>
-      <div>Powered by SciPy Powell Hybrid Solver & Basel Vasicek ASRF</div>
+      <div>Model output for screening purposes only. Not a credit rating, credit opinion or investment advice.</div>
     </div>
   </footer>
 
@@ -2587,7 +2588,7 @@
 
       // Directive & Rating
       const banner = document.getElementById('underwritingBanner');
-      const badge = document.getElementById('compositeRatingBadge');
+      const badge = document.getElementById('internalRiskBandBadge');
       const title = document.getElementById('directiveTitle');
       const desc = document.getElementById('directiveDesc');
       const stage = document.getElementById('stageBadge');
@@ -2596,22 +2597,22 @@
       let tone;
       if (dd < 1.0 || (scoresApply && zScore < 1.10)) {
         tone = 'bad';
-        badge.innerText = 'CCC/D';
-        title.innerText = 'REJECT / RESTRUCTURING WATCH';
+        badge.innerText = 'Band 7 (Very High)';
+        title.innerText = 'INDICATIVE: VERY HIGH RISK — WORKOUT REVIEW';
         desc.innerText = 'Severe default hazard; latent assets approach debt barrier with critically impaired equity cushion.';
         stage.innerText = 'Stage 3 (Credit Impaired)';
         fTier.innerText = 'Critical Risk';
       } else if (manipFlag || dd < 2.0 || cccAlert) {
         tone = 'warn';
-        badge.innerText = 'BB';
-        title.innerText = 'UNDERWRITE STRICT COVENANTS / SICR WATCH';
+        badge.innerText = dd < 1.5 ? 'Band 6 (High)' : 'Band 5 (Elevated)';
+        title.innerText = 'INDICATIVE: ELEVATED RISK — ENHANCED MONITORING';
         desc.innerText = 'Significant Increase in Credit Risk (SICR) or forensic anomalies detected. Impose negative pledge covenants & quarterly audit verification.';
         stage.innerText = 'Stage 2 (Lifetime ECL)';
         fTier.innerText = manipFlag ? 'High (Manipulation Flag)' : 'Medium (Elevated CCC)';
       } else {
         tone = 'good';
-        badge.innerText = dd > 4.0 ? 'AAA' : 'BBB';
-        title.innerText = 'APPROVE / INVESTMENT GRADE MANDATE';
+        badge.innerText = dd > 4.0 ? 'Band 1 (Minimal)' : 'Band 3 (Moderate)';
+        title.innerText = 'INDICATIVE: MINIMAL RISK — SUPERIOR CAPACITY';
         desc.innerText = 'Robust solvency buffer with negligible refinancing friction; asset volatility inversion confirms strong enterprise liquidation coverage.';
         stage.innerText = 'Stage 1 (12-Mo ECL)';
         fTier.innerText = 'Low / Clean Audit';
@@ -2708,7 +2709,7 @@
         },
         // The borrower's filed annual reports once loaded, otherwise the sample statements
         forensic_input: loadedBorrower && loadedBorrower.forensic_input ? loadedBorrower.forensic_input : SAMPLE_FORENSIC_INPUT,
-        forensics_applicable: !(loadedBorrower && loadedBorrower.forensics_applicable === false),
+        is_financial_institution: Boolean(loadedBorrower && loadedBorrower.forensics_applicable === false),
         loan_tenor_years: 5
       };
 

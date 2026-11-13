@@ -70,6 +70,7 @@ def industrial_gaap():
         "InventoryNet": [row(1_400 * m, FY, "10-K"), row(1_200 * m, FY_PRIOR, "10-K")],
         "AccountsPayableCurrent": [row(42_000 * m, FY, "10-K"), row(27_000 * m, FY_PRIOR, "10-K")],
         "RetainedEarningsAccumulatedDeficit": [row(330_000 * m, FY, "10-K"), row(250_000 * m, FY_PRIOR, "10-K")],
+        "MarketableSecuritiesCurrent": [row(60_000 * m, FY, "10-K"), row(55_000 * m, FY_PRIOR, "10-K")],
     }
 
 
@@ -211,6 +212,15 @@ def test_financials_build_a_valid_forensic_input():
     assert data["sga_t"] == pytest.approx(34_000)          # selling & marketing + G&A
     assert data["long_term_debt_t_minus_1"] == pytest.approx(40_000)
     assert data["working_capital_t"] == pytest.approx(50_000)
+
+
+def test_untagged_optional_lines_are_counted_as_zero_and_disclosed():
+    """AGENT_RULES.md rule 1: no silent defaults for missing accounting lines."""
+    gaap = industrial_gaap()
+    del gaap["InventoryNet"]
+    financials, _ = md.extract_financials(md.CompanyFacts(facts_json(gaap)), bank=False)
+    assert financials.forensic_input["inventory_t"] == 0
+    assert any("counted as 0: inventory (2026), inventory (2025)" in n for n in financials.notes)
 
 
 def test_financials_missing_revenue_keep_sample_with_a_note():
@@ -390,7 +400,7 @@ def test_api_borrower_insurer_gets_no_forensic_scores(offline_sources):
     data = client.get("/api/v1/market/borrower", params={"ticker": "TEST"}).json()
     assert data["is_bank"] is False
     assert data["forensics_applicable"] is False
-    assert any("financial company's rating" in w for w in data["warnings"])
+    assert any("financial company's risk band" in w for w in data["warnings"])
 
 
 def test_cash_cycle_without_cost_of_sales_uses_receivable_days_only():
@@ -516,7 +526,7 @@ def test_api_borrower_without_sec_contact_is_503(monkeypatch):
 
 # --- Banks in the comprehensive assessment and memo ----------------------------------------------
 
-def _bank_like_request(forensics_applicable):
+def _bank_like_request(financial_institution):
     """Strong market position but a bank-shaped balance sheet that Altman Z'' reads as distress."""
     return {
         "company_name": "Big Bank",
@@ -536,22 +546,24 @@ def _bank_like_request(forensics_applicable):
             "depreciation_t_minus_1": 7_500.0, "sga_t_minus_1": 0.0, "long_term_debt_t_minus_1": 400_000.0,
             "total_liabilities_t_minus_1": 3_650_000.0, "inventory_t_minus_1": 0.0, "accounts_payable_t_minus_1": 0.0,
         },
-        "forensics_applicable": forensics_applicable,
+        "is_financial_institution": financial_institution,
         "loan_tenor_years": 5,
     }
 
 
-def test_bank_rating_leaves_out_forensic_scores():
-    as_company = client.post("/api/v1/credit/comprehensive", json=_bank_like_request(True)).json()
-    as_bank = client.post("/api/v1/credit/comprehensive", json=_bank_like_request(False)).json()
+def test_bank_band_ignores_the_forensic_models():
+    """Main's guard makes the forensic models step aside for financial institutions; the band must
+    then rest on distance to default, not read the neutral Altman score of 0 as distress."""
+    as_company = client.post("/api/v1/credit/comprehensive", json=_bank_like_request(False)).json()
+    as_bank = client.post("/api/v1/credit/comprehensive", json=_bank_like_request(True)).json()
     assert as_company["forensics"]["altman"]["z_double_prime"] < 0.8
-    assert as_company["composite_rating"] == "CCC/D"
-    assert as_bank["composite_rating"] != "CCC/D"
-    assert as_bank["forensics_applicable"] is False
+    assert as_company["internal_risk_band"].startswith("Band 7")
+    assert as_bank["forensics"]["is_financial_institution"] is True
+    assert not as_bank["internal_risk_band"].startswith("Band 7")
     assert "not applied" in as_bank["executive_summary"]
 
 
 def test_bank_memo_says_forensics_were_excluded():
-    res = client.post("/api/v1/credit/memo/html", json=_bank_like_request(False))
+    res = client.post("/api/v1/credit/memo/html", json=_bank_like_request(True))
     assert res.status_code == 200
-    assert "excluded from the rating" in res.text
+    assert "excluded from the risk band" in res.text
