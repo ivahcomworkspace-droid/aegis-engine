@@ -1,424 +1,2238 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <!-- The template paints the phone status bar in its primary colour; theme-color does the same for mobile browsers -->
+  <meta name="theme-color" content="#4667D5">
   <title>AEGIS // Institutional Structural Credit Risk & Forensics Engine</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%234667D5'/%3E%3Cpath d='M32 13l15 5.6v11.2c0 9.6-6.4 17.6-15 21.2-8.6-3.6-15-11.6-15-21.2V18.6z' fill='%23fff'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- UrbanHome theme typography (Montserrat) and icon set (Material Icons) -->
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons&display=block" rel="stylesheet">
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <!-- Lucide Icons -->
-  <script src="https://unpkg.com/lucide@latest"></script>
   <script>
     tailwind.config = {
-      darkMode: 'class',
       theme: {
         extend: {
           fontFamily: {
-            sans: ['"Plus Jakarta Sans"', 'sans-serif'],
-            mono: ['"JetBrains Mono"', 'monospace'],
-          },
-          colors: {
-            aegis: {
-              bg: '#070b14',
-              surface: '#0f172a',
-              card: '#131e36',
-              border: '#1e293b',
-              accent: '#0ea5e9',
-              accentHover: '#38bdf8',
-              emerald: '#10b981',
-              amber: '#f59e0b',
-              rose: '#f43f5e'
-            }
+            sans: ['Montserrat', 'sans-serif'],
           }
         }
       }
     }
   </script>
   <style>
+    /* ===================================================================== */
+    /* UrbanHome theme tokens                                                */
+    /* Source: constant/styles.js plus colours the template's screens use    */
+    /* directly (provider "next booking" card, wallet panel, snackbar).      */
+    /* ===================================================================== */
+    :root {
+      /* Colors */
+      --uh-primary: #4667D5;                     /* primaryColor */
+      --uh-primary-hover: #3A58C2;
+      --uh-primary-tint: rgba(70, 103, 213, 0.12);
+      --uh-body: #F2F4F6;                        /* bodyBackColor */
+      --uh-white: #FFFFFF;
+      --uh-black: #000000;
+      --uh-gray: #808080;                        /* grayColor (icons, borders) */
+      --uh-blue: #448AFF;                        /* blueColor */
+      --uh-green: #006400;                       /* greenColor */
+      --uh-orange: #FFA500;                      /* orangeColor */
+      --uh-red: #FF0000;                         /* redColor */
+      --uh-navy: #141B47;                        /* provider "next booking" card */
+      --uh-indigo: #100495;                      /* wallet cash panel */
+      --uh-dark: #333333;                        /* snackbar */
+      --uh-border: #D3D3D3;                      /* search field and booking card borders */
+      --uh-line: rgba(128, 128, 128, 0.2);       /* dividers */
+      --uh-frost: rgba(255, 255, 255, 0.35);     /* chips on dark cards */
+      --uh-tile-end: #C5D0F3;                    /* "Today's offer" banner icon tile */
+      --uh-track: #E3E6EB;
+
+      /* Readability adjustments: #808080 is 3.9:1 on white, so small text uses a
+         slightly darker gray, and orange/red text uses deeper shades */
+      --uh-gray-text: #6B6B6B;
+      --uh-orange-ink: #9A5B00;
+      --uh-red-ink: #CC0000;
+
+      --uh-green-tint: rgba(0, 100, 0, 0.12);
+      --uh-orange-tint: rgba(255, 165, 0, 0.16);
+      --uh-red-tint: rgba(255, 0, 0, 0.10);
+
+      /* Sizes */
+      --uh-radius: 10px;                         /* Sizes.fixPadding */
+      --uh-shadow: 0 0 6px rgba(0, 0, 0, 0.15);  /* CommonStyles.shadow + elevation 3 */
+    }
+
+    html {
+      background: var(--uh-body);
+      scroll-behavior: smooth;
+    }
     body {
-      background-color: #070b14;
-      background-image: 
-        radial-gradient(circle at 15% 15%, rgba(14, 165, 233, 0.08) 0%, transparent 40%),
-        radial-gradient(circle at 85% 85%, rgba(16, 185, 129, 0.05) 0%, transparent 45%);
+      background: var(--uh-body);
+      color: var(--uh-black);
+      font-variant-numeric: tabular-nums;
+      -webkit-font-smoothing: antialiased;
+      padding-bottom: calc(56px + env(safe-area-inset-bottom));   /* room for the tab bar */
     }
-    .glass-panel {
-      background: rgba(19, 30, 54, 0.65);
-      backdrop-filter: blur(14px);
-      -webkit-backdrop-filter: blur(14px);
-      border: 1px solid rgba(255, 255, 255, 0.07);
+    @media (min-width: 1024px) {
+      body { padding-bottom: 0; }
     }
-    .glass-card {
-      background: rgba(15, 23, 42, 0.7);
-      backdrop-filter: blur(12px);
-      border: 1px solid rgba(56, 189, 248, 0.12);
-      transition: all 0.25s ease-in-out;
+    ::selection {
+      background: var(--uh-primary);
+      color: var(--uh-white);
     }
-    .glass-card:hover {
-      border-color: rgba(56, 189, 248, 0.3);
-      box-shadow: 0 10px 25px -5px rgba(14, 165, 233, 0.12);
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { animation: none !important; transition: none !important; }
     }
-    input[type=range] {
-      accent-color: #0ea5e9;
+
+    .material-icons {
+      font-size: 20px;
+      width: 1em;
+      overflow: hidden;
+      flex-shrink: 0;
+      line-height: 1;
     }
-    /* Custom scrollbars */
-    ::-webkit-scrollbar {
-      width: 6px;
+    .material-icons.is-sm { font-size: 18px; }
+
+    /* Status tones (booking-status style: tinted fill, coloured border and text) */
+    .is-good  { --tone: var(--uh-green);   --tone-ink: var(--uh-green);      --tone-tint: var(--uh-green-tint); }
+    .is-warn  { --tone: var(--uh-orange);  --tone-ink: var(--uh-orange-ink); --tone-tint: var(--uh-orange-tint); }
+    .is-bad   { --tone: var(--uh-red);     --tone-ink: var(--uh-red-ink);    --tone-tint: var(--uh-red-tint); }
+    .is-brand { --tone: var(--uh-primary); --tone-ink: var(--uh-primary);    --tone-tint: var(--uh-primary-tint); }
+    .is-muted { --tone: var(--uh-border);  --tone-ink: var(--uh-gray-text);  --tone-tint: var(--uh-body); }
+
+    /* ---------- Typography (Fonts.blackColor16Bold, grayColor12Medium, ...) ---------- */
+    .uh-title {
+      font-size: 16px;
+      font-weight: 700;
+      line-height: 1.35;
+    }
+    .uh-label {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--uh-gray-text);
+    }
+    .uh-caption {
+      font-size: 12px;
+      font-weight: 500;
+      line-height: 1.5;
+      color: var(--uh-gray-text);
+    }
+
+    /* ---------- Surfaces ---------- */
+    .uh-card {
+      background: var(--uh-white);
+      border-radius: var(--uh-radius);
+      box-shadow: var(--uh-shadow);
+    }
+    .uh-divider { border-color: var(--uh-line); }
+    .uh-tone-text { color: var(--tone-ink); }
+
+    /* ---------- App bar (white header bar with shadow) ---------- */
+    .uh-appbar {
+      position: relative;
+      z-index: 40;
+      background: var(--uh-white);
+      box-shadow: var(--uh-shadow);
+    }
+    @media (min-width: 768px) {
+      .uh-appbar { position: sticky; top: 0; }
+    }
+    .uh-appbar-inner {
+      display: grid;
+      grid-template-columns: 40px minmax(0, 1fr) auto;
+      grid-template-areas: "logo brand action" "logo health action";
+      align-items: center;
+      column-gap: 12px;
+      row-gap: 2px;
+      padding: 10px 16px;
+    }
+    @media (min-width: 768px) {
+      .uh-appbar-inner {
+        grid-template-columns: 44px minmax(0, 1fr) auto auto;
+        grid-template-areas: "logo brand health action";
+        column-gap: 14px;
+        padding: 12px 24px;
+      }
+    }
+    @media (min-width: 1024px) {
+      .uh-appbar-inner {
+        grid-template-areas: "logo brand health action" "logo sub health action";
+      }
+    }
+    .uh-logo {
+      grid-area: logo;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 40px;
+      height: 40px;
+      border-radius: var(--uh-radius);
+      background: var(--uh-primary);
+      color: var(--uh-white);
+      box-shadow: 0 2px 6px rgba(70, 103, 213, 0.35);
+    }
+    .uh-logo .material-icons { font-size: 24px; }
+    @media (min-width: 768px) {
+      .uh-logo { width: 44px; height: 44px; }
+    }
+    .uh-brand {
+      grid-area: brand;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      overflow: hidden;
+    }
+    .uh-brand-name {
+      font-size: 20px;
+      font-weight: 700;
+      line-height: 1.2;
+      letter-spacing: -0.01em;
+    }
+    .uh-brand-sub {
+      grid-area: sub;
+      display: none;
+    }
+    /* Tablets: the full-width export button and health pill leave no room for the version badge */
+    @media (min-width: 768px) and (max-width: 1023.98px) {
+      .uh-brand .uh-badge { display: none; }
+    }
+    @media (min-width: 1024px) {
+      .uh-brand-sub { display: block; }
+    }
+    .uh-badge {
+      display: inline-flex;
+      align-items: center;
+      height: 22px;
+      padding: 0 8px;
+      border-radius: 30px;
+      background: var(--uh-primary-tint);
+      color: var(--uh-primary);
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    /* Engine health: a status line under the brand on phones, a pill on wider screens */
+    .uh-health {
+      grid-area: health;
+      justify-self: start;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      max-width: 100%;
+      min-width: 0;
+      color: var(--tone-ink);
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .uh-health > span:last-child {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    @media (min-width: 768px) {
+      .uh-health {
+        padding: 5px 12px;
+        border: 1px solid var(--tone);
+        border-radius: 30px;
+        background: var(--tone-tint);
+      }
+    }
+    .uh-health-dot {
+      position: relative;
+      flex-shrink: 0;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--tone);
+    }
+    .uh-health-dot::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      background: var(--tone);
+      animation: uh-ping 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+    }
+    @keyframes uh-ping {
+      75%, 100% { transform: scale(2.4); opacity: 0; }
+    }
+
+    /* ---------- Buttons (continueButtonStyle: solid primary, radius 10) ---------- */
+    .uh-btn {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      height: 40px;
+      padding: 0 16px;
+      border-radius: var(--uh-radius);
+      background: var(--uh-primary);
+      color: var(--uh-white);
+      font-size: 14px;
+      font-weight: 600;
+      white-space: nowrap;
+      box-shadow: 0 2px 6px rgba(70, 103, 213, 0.35);
+      transition: background-color 0.15s ease, opacity 0.15s ease;
+    }
+    .uh-btn:hover { background: var(--uh-primary-hover); }
+    .uh-btn:active { opacity: 0.9; }                 /* TouchableOpacity activeOpacity={0.9} */
+    .uh-btn:disabled { opacity: 0.7; cursor: progress; }
+    .uh-btn-icon {
+      position: relative;
+      display: inline-flex;
+    }
+    /* While the memo compiles, the download icon turns into a spinner */
+    .uh-btn:disabled .uh-btn-icon .material-icons { visibility: hidden; }
+    .uh-btn:disabled .uh-btn-icon::after {
+      content: '';
+      position: absolute;
+      inset: 1px;
+      border: 2px solid rgba(255, 255, 255, 0.45);
+      border-top-color: var(--uh-white);
+      border-radius: 50%;
+      animation: uh-spin 0.8s linear infinite;
+    }
+    @keyframes uh-spin {
+      to { transform: rotate(360deg); }
+    }
+    .uh-export { grid-area: action; }
+    /* Phones: the template's 40px round icon button (profile "edit" button) */
+    @media (max-width: 639.98px) {
+      .uh-export {
+        width: 40px;
+        padding: 0;
+        border-radius: 50%;
+      }
+      .uh-export .uh-btn-label {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+      }
+    }
+    .uh-see-all {                                   /* home screen "See all" link (redColor14Medium) */
+      color: var(--uh-red-ink);
+      font-size: 14px;
+      font-weight: 500;
+      border-radius: 4px;
+    }
+    .uh-see-all:hover { text-decoration: underline; }
+    .uh-btn:focus-visible,
+    .uh-see-all:focus-visible {
+      outline: 2px solid var(--uh-primary);
+      outline-offset: 2px;
+    }
+
+    /* ---------- Section headings (title + right-hand link, as on the home screen) ---------- */
+    .uh-section { scroll-margin-top: 16px; }
+    @media (min-width: 768px) {
+      .uh-section { scroll-margin-top: 92px; }
+    }
+    .uh-section-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px 12px;
+      min-height: 24px;
+      margin-bottom: 12px;
+    }
+    .uh-section-title {
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    /* ---------- Hero: the "Today's offer" banner ---------- */
+    .uh-hero {
+      --deco-size: 300px;
+      --deco-x: 60px;
+      --deco-y: 64px;
+      position: relative;
+      isolation: isolate;
+      overflow: hidden;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-areas: "head tile" "desc desc" "chips chips";
+      align-items: start;
+      gap: 16px;
+      padding: 20px;
+      border-radius: var(--uh-radius);
+      background: var(--uh-primary);
+      color: var(--uh-white);
+      box-shadow: var(--uh-shadow);
+    }
+    @media (min-width: 640px) {
+      .uh-hero {
+        --deco-size: 520px;
+        --deco-x: 96px;
+        --deco-y: 50%;
+        grid-template-areas: "head tile" "desc tile" "chips tile";
+        grid-template-rows: auto auto auto;
+        align-content: center;                  /* keeps the text centred when the card stretches */
+        column-gap: 28px;
+        row-gap: 14px;
+        padding: 28px;
+      }
+    }
+    /* Lighter half-disc and thin ring behind the icon tile, as in the banner artwork */
+    .uh-hero::before,
+    .uh-hero::after {
+      content: '';
+      position: absolute;
+      z-index: -1;
+      top: var(--deco-y);
+      right: var(--deco-x);
+      border-radius: 50%;
+      transform: translate(50%, -50%);
+      pointer-events: none;
+    }
+    .uh-hero::before {
+      width: var(--deco-size);
+      height: var(--deco-size);
+      background: linear-gradient(90deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.26));
+    }
+    .uh-hero::after {
+      width: calc(var(--deco-size) * 0.68);
+      height: calc(var(--deco-size) * 0.68);
+      border: 1.5px solid rgba(255, 255, 255, 0.2);
+    }
+    .uh-hero-head {
+      grid-area: head;
+      min-width: 0;
+    }
+    .uh-hero-eyebrow {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: rgba(255, 255, 255, 0.88);
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .uh-hero-title {
+      margin-top: 8px;
+      font-size: 18px;
+      font-weight: 700;
+      line-height: 1.3;
+      letter-spacing: 0.01em;
+    }
+    @media (min-width: 640px) {
+      .uh-hero-title { font-size: 22px; }
+    }
+    .uh-hero-desc {
+      grid-area: desc;
+      max-width: 62ch;
+      color: rgba(255, 255, 255, 0.92);
+      font-size: 14px;
+      font-weight: 500;
+      line-height: 1.55;
+    }
+    .uh-hero-chips {
+      grid-area: chips;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .uh-hero-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      max-width: 100%;
+      height: 30px;
+      padding: 0 12px;
+      border-radius: var(--uh-radius);
+      background: rgba(20, 27, 71, 0.28);       /* navy wash keeps white text readable on blue */
+      font-size: 13px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .uh-hero-chip > span:last-child {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    /* Frosted icon tile from the banner, holding the composite rating */
+    .uh-hero-tile {
+      grid-area: tile;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      width: 88px;
+      height: 88px;
+      border-radius: var(--uh-radius);
+      background: linear-gradient(180deg, var(--uh-white) 0%, var(--uh-tile-end) 100%);
+      box-shadow: 0 6px 16px rgba(20, 27, 71, 0.22);
+      color: var(--tone-ink);
+      text-align: center;
+    }
+    @media (min-width: 640px) {
+      .uh-hero-tile {
+        align-self: center;
+        width: 136px;
+        height: 136px;
+        gap: 4px;
+      }
+    }
+    .uh-hero-tile-label {
+      color: var(--uh-gray-text);
+      font-size: 10px;
+      font-weight: 600;
+      line-height: 1.2;
+    }
+    @media (min-width: 640px) {
+      .uh-hero-tile-label { font-size: 12px; }
+    }
+    .uh-hero-rating {
+      font-size: 22px;
+      font-weight: 700;
+      line-height: 1.1;
+      letter-spacing: -0.01em;
+    }
+    @media (min-width: 640px) {
+      .uh-hero-rating { font-size: 34px; }
+    }
+    .uh-hero-tile .material-icons { font-size: 18px; }
+    @media (min-width: 640px) {
+      .uh-hero-tile .material-icons { font-size: 24px; }
+    }
+
+    /* ---------- Pills and chips ---------- */
+    .uh-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 10px;
+      border: 1px solid var(--tone);
+      border-radius: 30px;
+      background: var(--tone-tint);
+      color: var(--tone-ink);
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.4;
+      white-space: nowrap;
+    }
+    .uh-pill.uh-sentence {
+      display: inline-block;                     /* ::first-letter needs a block container */
+      text-transform: lowercase;
+    }
+    .uh-sentence::first-letter { text-transform: uppercase; }
+    .uh-chip {
+      display: inline-flex;
+      align-items: center;
+      height: 24px;
+      padding: 0 10px;
+      border-radius: 30px;
+      background: var(--uh-primary-tint);
+      color: var(--uh-primary);
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .uh-chip.is-muted {
+      background: var(--uh-body);
+      color: var(--uh-gray-text);
+    }
+
+    /* ---------- IFRS 9 staging: the booking-status timeline ---------- */
+    .uh-steps {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+    .uh-step {
+      position: relative;
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      padding-bottom: 18px;
+    }
+    .uh-step:last-child { padding-bottom: 0; }
+    .uh-step:not(:last-child)::after {             /* dashLine */
+      content: '';
+      position: absolute;
+      left: 10px;
+      top: 27px;
+      bottom: 5px;
+      border-left: 1.5px dashed var(--uh-border);
+    }
+    .uh-step.is-past::after { border-left-color: var(--tone); }
+    .uh-step-mark {                                /* bookingStatusTicMarkStyle */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      width: 22px;
+      height: 22px;
+      margin-top: 1px;
+      border: 1.5px solid var(--uh-gray);
+      border-radius: 50%;
+      background: var(--uh-white);
+      color: var(--uh-white);
+      transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .uh-step-mark .material-icons {
+      font-size: 14px;
+      visibility: hidden;
+    }
+    .uh-step.is-past .uh-step-mark { border-color: var(--tone); }
+    .uh-step.is-current .uh-step-mark {
+      border-color: var(--tone);
+      background: var(--tone);
+      box-shadow: 0 0 0 4px var(--tone-tint);
+    }
+    .uh-step.is-current .uh-step-mark .material-icons { visibility: visible; }
+    .uh-step-title {
+      color: var(--uh-gray-text);
+      font-size: 14px;
+      font-weight: 500;
+      line-height: 1.4;
+    }
+    .uh-step.is-current .uh-step-title {
+      color: var(--uh-black);
+      font-weight: 700;
+    }
+    .uh-step-desc {
+      margin-top: 1px;
+      color: var(--uh-gray-text);
+      font-size: 12px;
+      font-weight: 500;
+      line-height: 1.45;
+    }
+
+    /* ---------- KPI cards with the home screen's solid service tiles ---------- */
+    .uh-tile {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      width: 44px;
+      height: 44px;
+      border-radius: var(--uh-radius);
+      background: var(--tile, var(--uh-primary));
+      color: var(--uh-white);
+    }
+    .uh-tile .material-icons { font-size: 24px; }
+    .uh-kpi-label {
+      margin-top: 14px;
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 1.35;
+    }
+    .uh-kpi-value {
+      margin-top: 2px;
+      font-size: 26px;
+      font-weight: 700;
+      line-height: 1.2;
+      letter-spacing: -0.01em;
+    }
+
+    /* ---------- Form controls ---------- */
+    .uh-field-label {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--uh-gray-text);
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .uh-field {                                     /* searchTextFieldWrapStyle */
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      height: 42px;
+      padding: 0 10px;
+      background: var(--uh-white);
+      border: 1px solid var(--uh-border);
+      border-radius: var(--uh-radius);
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    .uh-field .material-icons { color: var(--uh-primary); }
+    .uh-field:focus-within {
+      border-color: var(--uh-primary);
+      box-shadow: 0 0 0 3px var(--uh-primary-tint);
+    }
+    .uh-field-input {
+      flex: 1;
+      min-width: 0;
+      height: 100%;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: var(--uh-black);
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .uh-range {
+      --p: 0.5;
+      -webkit-appearance: none;
+      appearance: none;
+      display: block;
+      width: 100%;
+      height: 22px;
+      background: transparent;
+      cursor: pointer;
+    }
+    .uh-range:focus { outline: none; }
+    .uh-range::-webkit-slider-runnable-track {
       height: 6px;
-    }
-    ::-webkit-scrollbar-track {
-      background: #070b14;
-    }
-    ::-webkit-scrollbar-thumb {
-      background: #1e293b;
       border-radius: 3px;
+      background: linear-gradient(to right,
+        var(--uh-primary) 0 calc(10px + (100% - 20px) * var(--p)),
+        var(--uh-track) calc(10px + (100% - 20px) * var(--p)) 100%);
     }
-    ::-webkit-scrollbar-thumb:hover {
-      background: #334155;
+    .uh-range::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 20px;
+      height: 20px;
+      margin-top: -7px;
+      border: 3px solid var(--uh-white);
+      border-radius: 50%;
+      background: var(--uh-primary);
+      box-shadow: 0 0 6px rgba(0, 0, 0, 0.25);
+      transition: box-shadow 0.15s ease;
     }
+    .uh-range::-moz-range-track {
+      height: 6px;
+      border-radius: 3px;
+      background: var(--uh-track);
+    }
+    .uh-range::-moz-range-progress {
+      height: 6px;
+      border-radius: 3px;
+      background: var(--uh-primary);
+    }
+    .uh-range::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border: 3px solid var(--uh-white);
+      border-radius: 50%;
+      background: var(--uh-primary);
+      box-shadow: 0 0 6px rgba(0, 0, 0, 0.25);
+    }
+    .uh-range:focus-visible::-webkit-slider-thumb {
+      box-shadow: 0 0 0 5px var(--uh-primary-tint), 0 0 6px rgba(0, 0, 0, 0.25);
+    }
+    .uh-range:focus-visible::-moz-range-thumb {
+      box-shadow: 0 0 0 5px var(--uh-primary-tint), 0 0 6px rgba(0, 0, 0, 0.25);
+    }
+
+    .uh-toggle {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 0;
+      cursor: pointer;
+    }
+    .uh-toggle + .uh-toggle { border-top: 1px solid var(--uh-line); }
+    .uh-switch-input {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+    }
+    .uh-switch {
+      position: relative;
+      flex-shrink: 0;
+      width: 40px;
+      height: 24px;
+      border-radius: 12px;
+      background: var(--uh-border);
+      transition: background-color 0.2s ease;
+    }
+    .uh-switch::after {
+      content: '';
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--uh-white);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+      transition: transform 0.2s ease;
+    }
+    .uh-switch-input:checked + .uh-switch { background: var(--uh-primary); }
+    .uh-switch-input:checked + .uh-switch::after { transform: translateX(16px); }
+    .uh-switch-input:focus-visible + .uh-switch {
+      outline: 2px solid var(--uh-primary);
+      outline-offset: 2px;
+    }
+
+    /* ---------- Live data: load button, editable values, status box, per-input sources ---------- */
+    .uh-btn.is-field {
+      height: 42px;
+      padding: 0 14px;
+    }
+    .uh-chip-input {
+      width: 7.5em;
+      height: 26px;
+      padding: 0 10px;
+      border: 1px solid transparent;
+      border-radius: 30px;
+      background: var(--uh-primary-tint);
+      color: var(--uh-primary);
+      font-size: 12px;
+      font-weight: 600;
+      text-align: right;
+      cursor: text;
+      transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    .uh-chip-input:hover { border-color: rgba(70, 103, 213, 0.35); }
+    .uh-chip-input:focus {
+      outline: none;
+      border-color: var(--uh-primary);
+      background: var(--uh-white);
+      box-shadow: 0 0 0 3px var(--uh-primary-tint);
+    }
+    .uh-data-status {
+      padding: 10px 12px;
+      border-radius: var(--uh-radius);
+      font-size: 12px;
+      font-weight: 500;
+      line-height: 1.45;
+    }
+    .uh-data-status.is-manual { background: var(--uh-body); color: var(--uh-gray-text); }
+    .uh-data-status.is-loading,
+    .uh-data-status.is-loaded { background: var(--uh-primary-tint); color: var(--uh-black); }
+    .uh-data-status.is-error { background: var(--uh-red-tint); color: var(--uh-red-ink); }
+    .uh-data-status-title {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .uh-data-status-title .material-icons { color: var(--uh-primary); }
+    .uh-data-status.is-error .uh-data-status-title .material-icons { color: var(--uh-red-ink); }
+    .uh-data-status.is-loading .uh-data-status-title .material-icons { animation: uh-spin 1.2s linear infinite; }
+    .uh-data-notes {
+      display: grid;
+      gap: 4px;
+      margin-top: 8px;
+    }
+    .uh-data-notes li {
+      display: flex;
+      gap: 6px;
+      color: var(--uh-orange-ink);
+    }
+    .uh-data-notes .material-icons {
+      font-size: 16px;
+      margin-top: 1px;
+    }
+    .uh-source {
+      margin-top: 4px;
+      color: var(--uh-gray-text);
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 1.4;
+    }
+    .uh-source { white-space: pre-line; }
+
+    /* ---------- Ticker and company dropdowns ---------- */
+    .uh-combo { position: relative; }
+    .uh-combo-caret {
+      color: var(--uh-gray);
+      cursor: pointer;
+      transition: transform 0.15s ease;
+    }
+    .uh-combo.is-open .uh-combo-caret { transform: rotate(180deg); }
+    .uh-options {
+      position: absolute;
+      left: 0;
+      width: max(100%, 380px);               /* wider than the field so names stay readable */
+      max-width: calc(100vw - 32px);
+      top: calc(100% + 6px);
+      z-index: 30;
+      max-height: 320px;
+      overflow-y: auto;
+      padding: 6px;
+      background: var(--uh-white);
+      border: 1px solid var(--uh-border);
+      border-radius: var(--uh-radius);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+    }
+    .uh-options[hidden] { display: none; }
+    @media (max-width: 639.98px) {
+      .uh-options { width: 100%; }                 /* stay inside the card on phones */
+      .uh-option { grid-template-columns: 2.2em 4.4em minmax(0, 1fr); }
+      .uh-option-exchange { display: none; }
+    }
+    .uh-option {
+      display: grid;
+      grid-template-columns: 2.2em 4.4em minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 8px;
+      border-radius: 8px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .uh-option.is-active,
+    .uh-option:hover { background: var(--uh-primary-tint); }
+    .uh-option-auto {
+      color: var(--uh-primary);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .uh-option-ticker { font-weight: 700; }
+    .uh-option-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .uh-option-exchange {
+      color: var(--uh-gray-text);
+      font-size: 11px;
+    }
+    .uh-option.is-manual .uh-option-ticker,
+    .uh-option.is-manual .uh-option-name { color: var(--uh-gray-text); }
+    .uh-options-note,
+    .uh-options-message {
+      padding: 8px;
+      color: var(--uh-gray-text);
+      font-size: 11px;
+      line-height: 1.45;
+    }
+    .uh-options-note {
+      margin-top: 4px;
+      border-top: 1px solid var(--uh-line);
+    }
+    .uh-options-message { font-size: 12px; }
+    .uh-source[hidden] { display: none; }
+
+    /* ---------- Navy feature card (provider app "next booking" card) ---------- */
+    .uh-feature {
+      padding: 16px;
+      border-radius: var(--uh-radius);
+      background: var(--uh-navy);
+      color: var(--uh-white);
+    }
+    .uh-feature-label {
+      color: rgba(255, 255, 255, 0.72);
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .uh-feature-value {
+      margin-top: 2px;
+      font-size: 22px;
+      font-weight: 700;
+    }
+    .uh-feature-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: var(--uh-frost);
+    }
+    .uh-feature-chip {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 12px;
+      padding: 7px 10px;
+      border-radius: var(--uh-radius);
+      background: var(--uh-frost);
+      font-size: 12px;
+      font-weight: 500;
+      line-height: 1.4;
+    }
+
+    /* ---------- Chart legends ---------- */
+    .uh-legend {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--tone-ink);
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .uh-dot {
+      width: 10px;
+      height: 10px;
+      border: 2px solid var(--tone);
+      border-radius: 50%;
+      background: var(--tone-tint);
+    }
+
+    /* ---------- Forensic signal cards ---------- */
+    .uh-signal-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      width: 44px;
+      height: 44px;
+      border-radius: var(--uh-radius);
+      background: var(--tone-tint);
+      color: var(--tone-ink);
+      transition: background-color 0.2s ease, color 0.2s ease;
+    }
+    .uh-signal-icon .material-icons { font-size: 24px; }
+    .uh-signal-value {
+      margin-top: 2px;
+      font-size: 22px;
+      font-weight: 700;
+      line-height: 1.3;
+    }
+    .uh-signal-value span { display: inline-block; }   /* "(Δ +2.1 days)" wraps as one unit */
+
+    /* ---------- Bottom tab bar on phones and tablets (bottomTabBarScreen) ---------- */
+    .uh-tabbar {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 50;
+      display: flex;
+      padding-bottom: env(safe-area-inset-bottom);
+      background: var(--uh-white);
+      box-shadow: 0 -1px 6px rgba(0, 0, 0, 0.12);
+    }
+    @media (min-width: 1024px) {
+      .uh-tabbar { display: none; }
+    }
+    .uh-tab {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      height: 56px;
+      color: var(--uh-gray-text);
+      font-size: 11px;
+      font-weight: 600;
+      -webkit-tap-highlight-color: transparent;
+      transition: color 0.15s ease;
+    }
+    .uh-tab .material-icons { font-size: 24px; }
+    .uh-tab.is-active { color: var(--uh-primary); }
+    .uh-tab:focus-visible {
+      outline: 2px solid var(--uh-primary);
+      outline-offset: -4px;
+      border-radius: var(--uh-radius);
+    }
+
+    /* ---------- Snackbar ---------- */
+    .uh-snackbar {
+      position: fixed;
+      left: 50%;
+      bottom: calc(72px + env(safe-area-inset-bottom));
+      z-index: 60;
+      max-width: calc(100% - 32px);
+      padding: 10px 15px;
+      border-radius: 15px;
+      background: var(--uh-dark);
+      color: var(--uh-white);
+      font-size: 14px;
+      font-weight: 500;
+      opacity: 0;
+      pointer-events: none;
+      transform: translate(-50%, 12px);
+      transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+    .uh-snackbar.is-visible {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
+    @media (min-width: 1024px) {
+      .uh-snackbar { bottom: 24px; }
+    }
+
+    /* ---------- Footer ---------- */
+    .uh-footer {
+      border-top: 1px solid var(--uh-line);
+      color: var(--uh-gray-text);
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    /* ---------- Scrollbars ---------- */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: var(--uh-body); }
+    ::-webkit-scrollbar-thumb { background: var(--uh-border); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--uh-gray); }
   </style>
 </head>
-<body class="text-slate-100 min-h-screen flex flex-col font-sans selection:bg-sky-500 selection:text-white">
+<body class="min-h-screen flex flex-col font-sans">
 
   <!-- ========================================================================= -->
-  <!-- HEADER & NAVIGATION                                                       -->
+  <!-- APP BAR                                                                   -->
   <!-- ========================================================================= -->
-  <header class="sticky top-0 z-50 glass-panel border-b border-slate-800/80 px-6 py-3.5">
-    <div class="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
-      <div class="flex items-center space-x-3">
-        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-600 via-sky-500 to-emerald-400 p-0.5 shadow-lg shadow-sky-500/20 flex items-center justify-center">
-          <div class="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center">
-            <i data-lucide="shield" class="w-5 h-5 text-sky-400"></i>
-          </div>
-        </div>
-        <div>
-          <div class="flex items-center space-x-2">
-            <span class="font-extrabold text-xl tracking-tight text-white font-mono">AEGIS</span>
-            <span class="text-xs px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/20 font-mono font-medium">TERMINAL 2.0</span>
-          </div>
-          <p class="text-xs text-slate-400 tracking-wide">Institutional Structural Credit Risk & Forensics Engine</p>
-        </div>
+  <header class="uh-appbar">
+    <div class="uh-appbar-inner max-w-7xl mx-auto">
+      <span class="uh-logo" aria-hidden="true"><span class="material-icons">shield</span></span>
+      <div class="uh-brand">
+        <h1 class="uh-brand-name">AEGIS</h1>
+        <span class="uh-badge">Terminal 2.0</span>
+      </div>
+      <p class="uh-brand-sub uh-label">Institutional Structural Credit Risk & Forensics Engine</p>
+
+      <!-- Live Engine Health Status -->
+      <div id="healthPill" class="uh-health is-good" role="status">
+        <span class="uh-health-dot" aria-hidden="true"></span>
+        <span id="healthText">Engine: Online (Sub-2ms Solver)</span>
       </div>
 
-      <div class="flex items-center space-x-4">
-        <!-- Live Engine Health Status Pill -->
-        <div class="flex items-center space-x-2.5 px-3 py-1.5 rounded-full bg-slate-900/90 border border-slate-800 text-xs font-mono">
-          <span class="relative flex h-2.5 w-2.5">
-            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-          </span>
-          <span id="healthText" class="text-emerald-400 font-semibold">Engine: Online (Sub-2ms Solver)</span>
-        </div>
-
-        <!-- Export PDF Memo Button -->
-        <button id="btnExportMemo" onclick="exportUnderwritingMemo()" class="flex items-center space-x-2 px-4 py-2 rounded-xl bg-gradient-to-r from-sky-600 to-sky-500 hover:from-sky-500 hover:to-sky-400 text-white font-semibold text-xs tracking-wide shadow-lg shadow-sky-500/25 transition-all transform active:scale-95 disabled:opacity-50">
-          <i data-lucide="file-down" class="w-4 h-4"></i>
-          <span id="btnExportText">Export Underwriting Memo</span>
-        </button>
-      </div>
+      <!-- Export PDF Memo Button -->
+      <button id="btnExportMemo" onclick="exportUnderwritingMemo()" class="uh-btn uh-export" title="Export Underwriting Memo">
+        <span class="uh-btn-icon" aria-hidden="true"><span class="material-icons is-sm">file_download</span></span>
+        <span id="btnExportText" class="uh-btn-label">Export Underwriting Memo</span>
+      </button>
     </div>
   </header>
 
   <!-- ========================================================================= -->
   <!-- MAIN WORKSPACE                                                            -->
   <!-- ========================================================================= -->
-  <main class="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-6 space-y-6">
+  <main class="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 pt-5 sm:pt-6 pb-8 space-y-7">
 
-    <!-- UNDERWRITING DIRECTIVE BANNER -->
-    <div id="underwritingBanner" class="p-4 rounded-2xl glass-card border-l-4 border-l-sky-500 flex flex-col md:flex-row md:items-center justify-between gap-4">
-      <div class="flex items-start space-x-3">
-        <div id="directiveIconBox" class="p-2 rounded-xl bg-sky-500/10 text-sky-400 mt-0.5">
-          <i data-lucide="check-circle-2" class="w-5 h-5"></i>
-        </div>
-        <div>
-          <div class="flex items-center space-x-3">
-            <span class="text-xs uppercase tracking-wider font-mono font-bold text-sky-400">Automated Credit Committee Mandate</span>
-            <span id="compositeRatingBadge" class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">AAA</span>
+    <section id="overview" class="uh-section space-y-7" aria-label="Overview">
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+
+        <!-- UNDERWRITING DIRECTIVE (its tone colours the rating and status icon) -->
+        <div id="underwritingBanner" class="uh-hero is-good lg:col-span-2">
+          <div class="uh-hero-head">
+            <div class="uh-hero-eyebrow">
+              <span class="material-icons is-sm" aria-hidden="true">gavel</span>
+              <span>Automated Credit Committee Mandate</span>
+            </div>
+            <h2 id="directiveTitle" class="uh-hero-title">APPROVE / INVESTMENT GRADE MANDATE</h2>
           </div>
-          <h2 id="directiveTitle" class="text-base font-bold text-white mt-0.5">APPROVE / INVESTMENT GRADE MANDATE</h2>
-          <p id="directiveDesc" class="text-xs text-slate-300 mt-1">Robust solvency buffer with negligible refinancing friction; asset volatility inversion confirms strong enterprise liquidation coverage.</p>
+          <p id="directiveDesc" class="uh-hero-desc">Robust solvency buffer with negligible refinancing friction; asset volatility inversion confirms strong enterprise liquidation coverage.</p>
+          <div class="uh-hero-chips">
+            <span class="uh-hero-chip"><span class="material-icons is-sm" aria-hidden="true">business</span><span id="borrowerName">Apex Industrial Corp</span></span>
+            <span class="uh-hero-chip"><span class="material-icons is-sm" aria-hidden="true">sell</span><span id="borrowerTicker">APEX</span></span>
+          </div>
+          <div class="uh-hero-tile">
+            <span class="uh-hero-tile-label">Rating</span>
+            <span id="compositeRatingBadge" class="uh-hero-rating">AAA</span>
+            <span id="directiveIcon" class="material-icons" aria-hidden="true">check_circle</span>
+          </div>
         </div>
-      </div>
-      <div class="flex items-center space-x-3 self-end md:self-center shrink-0">
-        <div class="text-right">
-          <div class="text-[10px] uppercase font-mono text-slate-400">IFRS 9 Classification</div>
-          <div id="stageBadge" class="text-xs font-mono font-bold text-emerald-400">Stage 1 (12-Mo ECL)</div>
-        </div>
-        <div class="h-8 w-px bg-slate-800"></div>
-        <div class="text-right">
-          <div class="text-[10px] uppercase font-mono text-slate-400">Forensics Risk Tier</div>
-          <div id="forensicTierBadge" class="text-xs font-mono font-bold text-emerald-400">Low / Clean Audit</div>
-        </div>
-      </div>
-    </div>
 
-    <!-- CORE 4 KPI SCORECARD -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      
-      <!-- Card 1: Distance to Default -->
-      <div class="glass-card rounded-2xl p-4 relative overflow-hidden">
-        <div class="flex items-center justify-between text-slate-400 mb-2">
-          <span class="text-xs uppercase font-mono font-semibold tracking-wider">Distance-to-Default</span>
-          <i data-lucide="activity" class="w-4 h-4 text-sky-400"></i>
+        <!-- IFRS 9 STAGING (booking-status timeline) -->
+        <div id="stagingCard" class="uh-card is-good p-5">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h3 class="uh-title">IFRS 9 Classification</h3>
+            <span id="stageBadge" class="uh-pill">Stage 1 (12-Mo ECL)</span>
+          </div>
+          <ol id="stageSteps" class="uh-steps mt-5">
+            <li class="uh-step is-current" aria-current="step">
+              <span class="uh-step-mark" aria-hidden="true"><span class="material-icons">check</span></span>
+              <div class="min-w-0">
+                <div class="uh-step-title">Stage 1 · Performing</div>
+                <div class="uh-step-desc">12-month expected credit loss</div>
+              </div>
+            </li>
+            <li class="uh-step">
+              <span class="uh-step-mark" aria-hidden="true"><span class="material-icons">priority_high</span></span>
+              <div class="min-w-0">
+                <div class="uh-step-title">Stage 2 · SICR</div>
+                <div class="uh-step-desc">Significant increase in credit risk · lifetime ECL</div>
+              </div>
+            </li>
+            <li class="uh-step">
+              <span class="uh-step-mark" aria-hidden="true"><span class="material-icons">close</span></span>
+              <div class="min-w-0">
+                <div class="uh-step-title">Stage 3 · Credit-impaired</div>
+                <div class="uh-step-desc">Objective evidence of impairment · lifetime ECL</div>
+              </div>
+            </li>
+          </ol>
         </div>
-        <div class="flex items-baseline space-x-2">
-          <span id="kpiDD" class="text-2xl font-bold font-mono text-white">4.18σ</span>
-          <span id="kpiPD" class="text-xs font-mono text-emerald-400 font-medium">PD: 0.001%</span>
-        </div>
-        <div class="mt-2 text-[11px] text-slate-400">Physical Merton default distance in asset standard deviations</div>
-        <div class="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-sky-500 to-emerald-400"></div>
-      </div>
 
-      <!-- Card 2: Latent Assets & Volatility -->
-      <div class="glass-card rounded-2xl p-4 relative overflow-hidden">
-        <div class="flex items-center justify-between text-slate-400 mb-2">
-          <span class="text-xs uppercase font-mono font-semibold tracking-wider">Inverted Enterprise Assets</span>
-          <i data-lucide="coins" class="w-4 h-4 text-amber-400"></i>
-        </div>
-        <div class="flex items-baseline space-x-2">
-          <span id="kpiVA" class="text-2xl font-bold font-mono text-white">$274.5M</span>
-          <span id="kpiSigmaA" class="text-xs font-mono text-amber-400 font-medium">σA: 22.1%</span>
-        </div>
-        <div class="mt-2 text-[11px] text-slate-400">Latent asset value & unobservable volatility inverted via Itô's Lemma</div>
-        <div class="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-500 to-orange-400"></div>
       </div>
 
-      <!-- Card 3: Risk-Neutral Spread -->
-      <div class="glass-card rounded-2xl p-4 relative overflow-hidden">
-        <div class="flex items-center justify-between text-slate-400 mb-2">
-          <span class="text-xs uppercase font-mono font-semibold tracking-wider">Equilibrium Spread</span>
-          <i data-lucide="trending-up" class="w-4 h-4 text-emerald-400"></i>
+      <!-- CORE 4 KPI SCORECARD -->
+      <div>
+        <div class="uh-section-head">
+          <h2 class="uh-section-title">Key Metrics</h2>
+          <span class="uh-label">1-year horizon · 45% LGD</span>
         </div>
-        <div class="flex items-baseline space-x-2">
-          <span id="kpiSpread" class="text-2xl font-bold font-mono text-white">42.8 bps</span>
-          <span class="text-xs font-mono text-slate-400">over RFR</span>
-        </div>
-        <div class="mt-2 text-[11px] text-slate-400">Theoretical credit hurdle rate under 45% Loss Given Default</div>
-        <div class="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-500 to-teal-400"></div>
-      </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
 
-      <!-- Card 4: IFRS 9 ECL Provision -->
-      <div class="glass-card rounded-2xl p-4 relative overflow-hidden">
-        <div class="flex items-center justify-between text-slate-400 mb-2">
-          <span class="text-xs uppercase font-mono font-semibold tracking-wider">Regulatory ECL Allowance</span>
-          <i data-lucide="scale" class="w-4 h-4 text-purple-400"></i>
-        </div>
-        <div class="flex items-baseline space-x-2">
-          <span id="kpiECL" class="text-2xl font-bold font-mono text-white">$45,210</span>
-          <span id="kpiECLPct" class="text-xs font-mono text-purple-400 font-medium">0.05% EAD</span>
-        </div>
-        <div class="mt-2 text-[11px] text-slate-400">Multi-period discounted credit loss provisioning allowance</div>
-        <div class="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-purple-500 to-pink-500"></div>
-      </div>
+          <!-- Card 1: Distance to Default -->
+          <div class="uh-card p-4">
+            <div class="flex items-center justify-between gap-2">
+              <span class="uh-tile" aria-hidden="true"><span class="material-icons">speed</span></span>
+              <span id="kpiPD" class="uh-chip">PD: 0.001%</span>
+            </div>
+            <div class="uh-kpi-label">Distance-to-Default</div>
+            <div id="kpiDD" class="uh-kpi-value">4.18σ</div>
+            <p class="uh-caption mt-1">Physical Merton default distance in asset standard deviations</p>
+          </div>
 
-    </div>
+          <!-- Card 2: Latent Assets & Volatility -->
+          <div class="uh-card p-4">
+            <div class="flex items-center justify-between gap-2">
+              <span class="uh-tile" style="--tile: var(--uh-navy)" aria-hidden="true"><span class="material-icons">account_balance</span></span>
+              <span id="kpiSigmaA" class="uh-chip">σA: 22.1%</span>
+            </div>
+            <div class="uh-kpi-label">Inverted Enterprise Assets</div>
+            <div id="kpiVA" class="uh-kpi-value">$274.5M</div>
+            <p class="uh-caption mt-1">Latent asset value & unobservable volatility inverted via Itô's Lemma</p>
+          </div>
+
+          <!-- Card 3: Risk-Neutral Spread -->
+          <div class="uh-card p-4">
+            <div class="flex items-center justify-between gap-2">
+              <span class="uh-tile" style="--tile: var(--uh-blue)" aria-hidden="true"><span class="material-icons">trending_up</span></span>
+              <span class="uh-chip is-muted">over RFR</span>
+            </div>
+            <div class="uh-kpi-label">Equilibrium Spread</div>
+            <div id="kpiSpread" class="uh-kpi-value">42.8 bps</div>
+            <p class="uh-caption mt-1">Theoretical credit hurdle rate under 45% Loss Given Default</p>
+          </div>
+
+          <!-- Card 4: IFRS 9 ECL Provision -->
+          <div class="uh-card p-4">
+            <div class="flex items-center justify-between gap-2">
+              <span class="uh-tile" style="--tile: var(--uh-indigo)" aria-hidden="true"><span class="material-icons">savings</span></span>
+              <span id="kpiECLPct" class="uh-chip">0.05% EAD</span>
+            </div>
+            <div class="uh-kpi-label">Regulatory ECL Allowance</div>
+            <div id="kpiECL" class="uh-kpi-value">$45,210</div>
+            <p class="uh-caption mt-1">Multi-period discounted credit loss provisioning allowance</p>
+          </div>
+
+        </div>
+      </div>
+    </section>
 
     <!-- MAIN GRID: INPUT CONTROLS + VISUALIZATIONS -->
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-7 lg:gap-6">
 
       <!-- ===================================================================== -->
       <!-- BORROWER INPUT PANEL (4 COLS)                                         -->
       <!-- ===================================================================== -->
-      <div class="lg:col-span-4 glass-card rounded-2xl p-5 space-y-5">
-        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-          <div class="flex items-center space-x-2">
-            <i data-lucide="sliders" class="w-4 h-4 text-sky-400"></i>
-            <h3 class="font-bold text-sm tracking-wide text-white uppercase font-mono">Borrower Parameters</h3>
-          </div>
-          <button onclick="resetDefaults()" class="text-[11px] font-mono text-slate-400 hover:text-sky-400 transition-colors">Reset</button>
+      <section id="parameters" class="uh-section lg:col-span-4" aria-labelledby="parametersTitle">
+        <div class="uh-section-head">
+          <h2 id="parametersTitle" class="uh-section-title">Borrower Parameters</h2>
+          <button onclick="resetDefaults()" class="uh-see-all">Reset</button>
         </div>
 
-        <!-- Entity Metadata -->
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-[11px] font-mono uppercase text-slate-400 mb-1">Ticker</label>
-            <input type="text" id="inpTicker" value="APEX" class="w-full bg-slate-900/90 border border-slate-800 rounded-lg px-3 py-1.5 text-xs font-mono text-white focus:outline-none focus:border-sky-500">
+        <div class="uh-card p-5 space-y-5">
+          <!-- Entity Metadata and live data loading -->
+          <div class="space-y-3">
+            <div class="uh-combo">
+              <label for="inpTicker" class="uh-field-label">Ticker</label>
+              <div class="flex gap-2">
+                <div class="uh-field flex-1 min-w-0">
+                  <span class="material-icons is-sm" aria-hidden="true">sell</span>
+                  <input type="text" id="inpTicker" value="APEX" class="uh-field-input" autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="companyOptions" oninput="syncBorrower()">
+                  <span class="material-icons is-sm uh-combo-caret" aria-hidden="true">expand_more</span>
+                </div>
+                <button id="btnLoadData" onclick="loadBorrowerData()" class="uh-btn is-field" title="Fill the inputs below from SEC filings, US Treasury yields and market prices">
+                  <span class="uh-btn-icon" aria-hidden="true"><span class="material-icons is-sm">cloud_download</span></span>
+                  <span>Load</span>
+                </button>
+              </div>
+            </div>
+            <div class="uh-combo">
+              <label for="inpCompany" class="uh-field-label">Company</label>
+              <div class="uh-field">
+                <span class="material-icons is-sm" aria-hidden="true">business</span>
+                <input type="text" id="inpCompany" value="Apex Industrial Corp" class="uh-field-input" autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="companyOptions" oninput="syncBorrower()">
+                <span class="material-icons is-sm uh-combo-caret" aria-hidden="true">expand_more</span>
+              </div>
+              <!-- Shared suggestion list; it moves under whichever field is being edited -->
+              <ul id="companyOptions" class="uh-options" role="listbox" aria-label="Companies" hidden></ul>
+            </div>
+            <div id="dataStatus" class="uh-data-status is-manual" role="status" aria-live="polite">
+              Pick a company marked (A) from the Ticker or Company list, or type a US-listed ticker and press Load, to fill the inputs from SEC filings, US Treasury yields and market prices. You can also type any value into the boxes beside each slider.
+            </div>
           </div>
-          <div>
-            <label class="block text-[11px] font-mono uppercase text-slate-400 mb-1">Company</label>
-            <input type="text" id="inpCompany" value="Apex Industrial Corp" class="w-full bg-slate-900/90 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-sky-500">
+
+          <!-- Equity Value Slider -->
+          <div class="space-y-2">
+            <div class="flex items-center justify-between gap-3">
+              <label for="rngEquity" class="text-sm font-medium">Equity Market Cap (E)</label>
+              <input id="valEquity" class="uh-chip-input" value="$200.0M" data-target="rngEquity" data-kind="money" aria-label="Equity market cap, type a value" title="Type a value, e.g. 4.2B or 35%" autocomplete="off" spellcheck="false">
+            </div>
+            <input type="range" id="rngEquity" min="20" max="1000" step="5" value="200" class="uh-range" oninput="handleParamChange()">
+            <p id="srcEquity" class="uh-source" hidden></p>
+          </div>
+
+          <!-- Equity Volatility Slider -->
+          <div class="space-y-2">
+            <div class="flex items-center justify-between gap-3">
+              <label for="rngEqVol" class="text-sm font-medium">Equity Volatility (σE)</label>
+              <input id="valEqVol" class="uh-chip-input" value="35.0%" data-target="rngEqVol" data-kind="percent" aria-label="Equity volatility, type a value" title="Type a value, e.g. 4.2B or 35%" autocomplete="off" spellcheck="false">
+            </div>
+            <input type="range" id="rngEqVol" min="10" max="100" step="1" value="35" class="uh-range" oninput="handleParamChange()">
+            <p id="srcEqVol" class="uh-source" hidden></p>
+          </div>
+
+          <!-- Short Term Debt -->
+          <div class="space-y-2">
+            <div class="flex items-center justify-between gap-3">
+              <label for="rngSTD" class="text-sm font-medium">Short-Term Debt (STD)</label>
+              <input id="valSTD" class="uh-chip-input" value="$30.0M" data-target="rngSTD" data-kind="money" aria-label="Short-term debt, type a value" title="Type a value, e.g. 4.2B or 35%" autocomplete="off" spellcheck="false">
+            </div>
+            <input type="range" id="rngSTD" min="0" max="300" step="5" value="30" class="uh-range" oninput="handleParamChange()">
+            <p id="srcSTD" class="uh-source" hidden></p>
+          </div>
+
+          <!-- Long Term Debt -->
+          <div class="space-y-2">
+            <div class="flex items-center justify-between gap-3">
+              <label for="rngLTD" class="text-sm font-medium">Long-Term Debt (LTD)</label>
+              <input id="valLTD" class="uh-chip-input" value="$100.0M" data-target="rngLTD" data-kind="money" aria-label="Long-term debt, type a value" title="Type a value, e.g. 4.2B or 35%" autocomplete="off" spellcheck="false">
+            </div>
+            <input type="range" id="rngLTD" min="0" max="800" step="10" value="100" class="uh-range" oninput="handleParamChange()">
+            <p id="srcLTD" class="uh-source" hidden></p>
+          </div>
+
+          <!-- Risk-Free Rate -->
+          <div class="space-y-2">
+            <div class="flex items-center justify-between gap-3">
+              <label for="rngRFR" class="text-sm font-medium">Risk-Free Rate (r)</label>
+              <input id="valRFR" class="uh-chip-input" value="4.50%" data-target="rngRFR" data-kind="percent" aria-label="Risk-free rate, type a value" title="Type a value, e.g. 4.2B or 35%" autocomplete="off" spellcheck="false">
+            </div>
+            <input type="range" id="rngRFR" min="1.0" max="8.0" step="0.25" value="4.50" class="uh-range" oninput="handleParamChange()">
+            <p id="srcRFR" class="uh-source" hidden></p>
+          </div>
+
+          <!-- Default Barrier Computed Info (navy feature card) -->
+          <div class="uh-feature">
+            <div class="flex items-center justify-between gap-3">
+              <div class="min-w-0">
+                <div class="uh-feature-label">Merton Default Barrier (D)</div>
+                <div id="dispBarrier" class="uh-feature-value">$80.0M</div>
+              </div>
+              <span class="uh-feature-icon" aria-hidden="true"><span class="material-icons">flag</span></span>
+            </div>
+            <div class="uh-feature-chip">
+              <span class="material-icons is-sm" aria-hidden="true">functions</span>
+              <span>D = STD + 0.5 × LTD (Standard KMV specification)</span>
+            </div>
+          </div>
+
+          <!-- Forensic Anomaly Toggle Flags -->
+          <div class="pt-4 border-t uh-divider">
+            <h3 class="text-sm font-bold">Forensic Risk Overrides</h3>
+            <div class="mt-1">
+              <label class="uh-toggle" for="chkManipulator">
+                <span class="min-w-0 flex-1">
+                  <span class="block text-sm font-medium">Simulate Beneish Earnings Manipulation</span>
+                  <span class="block uh-caption">M &gt; -1.78</span>
+                </span>
+                <input type="checkbox" id="chkManipulator" role="switch" class="uh-switch-input" onchange="handleParamChange()">
+                <span class="uh-switch" aria-hidden="true"></span>
+              </label>
+              <label class="uh-toggle" for="chkCCCAlert">
+                <span class="min-w-0 flex-1">
+                  <span class="block text-sm font-medium">Simulate Working Capital Stress</span>
+                  <span class="block uh-caption">ΔCCC &gt; +25d</span>
+                </span>
+                <input type="checkbox" id="chkCCCAlert" role="switch" class="uh-switch-input" onchange="handleParamChange()">
+                <span class="uh-switch" aria-hidden="true"></span>
+              </label>
+            </div>
           </div>
         </div>
-
-        <!-- Equity Value Slider -->
-        <div class="space-y-1.5">
-          <div class="flex justify-between items-center text-xs font-mono">
-            <span class="text-slate-300">Equity Market Cap (E)</span>
-            <span id="valEquity" class="text-sky-400 font-bold">$200.0M</span>
-          </div>
-          <input type="range" id="rngEquity" min="20" max="1000" step="5" value="200" class="w-full cursor-pointer h-1.5 bg-slate-800 rounded-lg" oninput="handleParamChange()">
-        </div>
-
-        <!-- Equity Volatility Slider -->
-        <div class="space-y-1.5">
-          <div class="flex justify-between items-center text-xs font-mono">
-            <span class="text-slate-300">Equity Volatility (σE)</span>
-            <span id="valEqVol" class="text-sky-400 font-bold">35.0%</span>
-          </div>
-          <input type="range" id="rngEqVol" min="10" max="100" step="1" value="35" class="w-full cursor-pointer h-1.5 bg-slate-800 rounded-lg" oninput="handleParamChange()">
-        </div>
-
-        <!-- Short Term Debt -->
-        <div class="space-y-1.5">
-          <div class="flex justify-between items-center text-xs font-mono">
-            <span class="text-slate-300">Short-Term Debt (STD)</span>
-            <span id="valSTD" class="text-sky-400 font-bold">$30.0M</span>
-          </div>
-          <input type="range" id="rngSTD" min="0" max="300" step="5" value="30" class="w-full cursor-pointer h-1.5 bg-slate-800 rounded-lg" oninput="handleParamChange()">
-        </div>
-
-        <!-- Long Term Debt -->
-        <div class="space-y-1.5">
-          <div class="flex justify-between items-center text-xs font-mono">
-            <span class="text-slate-300">Long-Term Debt (LTD)</span>
-            <span id="valLTD" class="text-sky-400 font-bold">$100.0M</span>
-          </div>
-          <input type="range" id="rngLTD" min="0" max="800" step="10" value="100" class="w-full cursor-pointer h-1.5 bg-slate-800 rounded-lg" oninput="handleParamChange()">
-        </div>
-
-        <!-- Risk-Free Rate -->
-        <div class="space-y-1.5">
-          <div class="flex justify-between items-center text-xs font-mono">
-            <span class="text-slate-300">Risk-Free Rate (r)</span>
-            <span id="valRFR" class="text-sky-400 font-bold">4.50%</span>
-          </div>
-          <input type="range" id="rngRFR" min="1.0" max="8.0" step="0.25" value="4.50" class="w-full cursor-pointer h-1.5 bg-slate-800 rounded-lg" oninput="handleParamChange()">
-        </div>
-
-        <!-- Default Barrier Computed Info -->
-        <div class="p-3 rounded-xl bg-slate-900/80 border border-slate-800 text-xs font-mono space-y-1">
-          <div class="flex justify-between text-slate-400">
-            <span>Merton Default Barrier (D):</span>
-            <span id="dispBarrier" class="text-white font-bold">$80.0M</span>
-          </div>
-          <div class="text-[10px] text-slate-500">D = STD + 0.5 × LTD (Standard KMV specification)</div>
-        </div>
-
-        <!-- Forensic Anomaly Toggle Flags -->
-        <div class="pt-2 border-t border-slate-800 space-y-2">
-          <div class="text-xs font-mono font-bold text-slate-300 uppercase">Forensic Risk Overrides</div>
-          <label class="flex items-center space-x-2 text-xs text-slate-300 cursor-pointer">
-            <input type="checkbox" id="chkManipulator" class="rounded bg-slate-800 border-slate-700 text-sky-500 focus:ring-0" onchange="handleParamChange()">
-            <span>Simulate Beneish Earnings Manipulation (M > -1.78)</span>
-          </label>
-          <label class="flex items-center space-x-2 text-xs text-slate-300 cursor-pointer">
-            <input type="checkbox" id="chkCCCAlert" class="rounded bg-slate-800 border-slate-700 text-sky-500 focus:ring-0" onchange="handleParamChange()">
-            <span>Simulate Working Capital Stress (ΔCCC > +25d)</span>
-          </label>
-        </div>
-
-      </div>
+      </section>
 
       <!-- ===================================================================== -->
       <!-- INTERACTIVE VISUALIZATIONS (8 COLS)                                   -->
       <!-- ===================================================================== -->
-      <div class="lg:col-span-8 space-y-6">
-
-        <!-- Chart 1: Merton Probability Density Chart -->
-        <div class="glass-card rounded-2xl p-5">
-          <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-800/80 gap-2">
-            <div>
-              <h3 class="font-bold text-sm text-white tracking-wide font-mono uppercase">Merton Structural Probability Density</h3>
-              <p class="text-xs text-slate-400">Asset return distribution φ(x) with highlighted default barrier (−DD) and default tail area</p>
-            </div>
-            <div class="flex items-center space-x-3 text-xs font-mono">
-              <span class="flex items-center space-x-1.5 text-rose-400">
-                <span class="w-2.5 h-2.5 rounded-full bg-rose-500/30 border border-rose-500"></span>
-                <span>Default Zone: x ≤ −DD</span>
-              </span>
-            </div>
-          </div>
-          <div class="h-64 mt-3">
-            <canvas id="mertonChart"></canvas>
-          </div>
+      <section id="models" class="uh-section lg:col-span-8" aria-labelledby="modelsTitle">
+        <div class="uh-section-head">
+          <h2 id="modelsTitle" class="uh-section-title">Structural & Stress Models</h2>
         </div>
 
-        <!-- Chart 2: Vasicek Macro Stress Testing Chart -->
-        <div class="glass-card rounded-2xl p-5">
-          <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-800/80 gap-2">
-            <div>
-              <h3 class="font-bold text-sm text-white tracking-wide font-mono uppercase">IFRS 9 / CECL Vasicek Macro Stress Curve</h3>
-              <p class="text-xs text-slate-400">Conditional default probability PD(Z) across macroeconomic standard deviations Z ∈ [−3σ, +3.5σ]</p>
+        <div class="space-y-5">
+          <!-- Chart 1: Merton Probability Density Chart -->
+          <div class="uh-card p-5">
+            <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+              <div class="min-w-0">
+                <h3 class="uh-title">Merton Structural Probability Density</h3>
+                <p class="uh-caption mt-1">Asset return distribution φ(x) with highlighted default barrier (−DD) and default tail area</p>
+              </div>
+              <div class="flex flex-wrap sm:flex-col sm:items-end gap-x-4 gap-y-1.5 shrink-0">
+                <span class="uh-legend is-brand"><span class="uh-dot"></span>Asset Return PDF φ(x)</span>
+                <span class="uh-legend is-bad"><span class="uh-dot"></span>Default Zone: x ≤ −DD</span>
+              </div>
             </div>
-            <div class="flex items-center space-x-3 text-xs font-mono">
-              <span class="flex items-center space-x-1.5 text-amber-400">
-                <span class="w-2 h-2 rounded-full bg-amber-400"></span>
-                <span>Basel 99.9% VaR Point</span>
-              </span>
+            <div class="h-64 mt-4">
+              <canvas id="mertonChart" aria-label="Merton asset return density with the default barrier marked" role="img"></canvas>
             </div>
           </div>
-          <div class="h-64 mt-3">
-            <canvas id="vasicekChart"></canvas>
+
+          <!-- Chart 2: Vasicek Macro Stress Testing Chart -->
+          <div class="uh-card p-5">
+            <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+              <div class="min-w-0">
+                <h3 class="uh-title">IFRS 9 / CECL Vasicek Macro Stress Curve</h3>
+                <p class="uh-caption mt-1">Conditional default probability PD(Z) across macroeconomic standard deviations Z ∈ [−3σ, +3.5σ]</p>
+              </div>
+              <div class="flex flex-wrap sm:flex-col sm:items-end gap-x-4 gap-y-1.5 shrink-0">
+                <span class="uh-legend is-brand"><span class="uh-dot"></span>Conditional PD(Z)</span>
+                <span class="uh-legend is-warn"><span class="uh-dot"></span>Basel 99.9% VaR Point</span>
+              </div>
+            </div>
+            <div class="h-64 mt-4">
+              <canvas id="vasicekChart" aria-label="Vasicek conditional default probability curve with the Basel 99.9% point marked" role="img"></canvas>
+            </div>
           </div>
         </div>
-
-      </div>
+      </section>
 
     </div>
 
     <!-- ===================================================================== -->
     <!-- FORENSIC AUDIT SIGNALS & FACTOR BREAKDOWN                             -->
     <!-- ===================================================================== -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-      
-      <!-- Beneish M-Score Card -->
-      <div class="glass-card rounded-2xl p-4">
-        <div class="flex items-center justify-between mb-2">
-          <span class="text-xs font-mono uppercase text-slate-400">Beneish 8-Factor M-Score</span>
-          <span id="beneishPill" class="text-[10px] font-mono px-2 py-0.5 rounded font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">CLEAN</span>
+    <section id="forensics" class="uh-section" aria-labelledby="forensicsTitle">
+      <div class="uh-section-head">
+        <div class="min-w-0">
+          <h2 id="forensicsTitle" class="uh-section-title">Forensic Signals</h2>
+          <p id="forensicBasis" class="uh-label mt-0.5">Sample financials · load a ticker to use filed figures</p>
         </div>
-        <div class="text-xl font-bold font-mono text-white" id="beneishScore">-2.64</div>
-        <p class="text-[11px] text-slate-400 mt-1">Threshold: M &gt; -1.78 flags active earnings manipulation. Measures accrual vs cash divergence.</p>
+        <div class="flex items-center gap-2">
+          <span class="uh-label">Forensics Risk Tier</span>
+          <span id="forensicTierBadge" class="uh-pill is-good">Low / Clean Audit</span>
+        </div>
       </div>
 
-      <!-- Altman Z'' Score Card -->
-      <div class="glass-card rounded-2xl p-4">
-        <div class="flex items-center justify-between mb-2">
-          <span class="text-xs font-mono uppercase text-slate-400">Altman Z''-Score</span>
-          <span id="altmanPill" class="text-[10px] font-mono px-2 py-0.5 rounded font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">SAFE ZONE</span>
-        </div>
-        <div class="text-xl font-bold font-mono text-white" id="altmanScore">3.45</div>
-        <p class="text-[11px] text-slate-400 mt-1">Safe (&gt;2.60) / Grey (1.10–2.60) / Distress (&lt;1.10). Services & emerging market specification.</p>
-      </div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
 
-      <!-- Cash Conversion Cycle Card -->
-      <div class="glass-card rounded-2xl p-4">
-        <div class="flex items-center justify-between mb-2">
-          <span class="text-xs font-mono uppercase text-slate-400">Cash Conversion Cycle</span>
-          <span id="cccPill" class="text-[10px] font-mono px-2 py-0.5 rounded font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">OPTIMAL</span>
+        <!-- Beneish M-Score Card -->
+        <div class="uh-card uh-signal is-good p-4">
+          <div class="flex items-center justify-between gap-2">
+            <span class="uh-signal-icon" aria-hidden="true"><span class="material-icons">policy</span></span>
+            <span id="beneishPill" class="uh-pill uh-sentence is-good">CLEAN</span>
+          </div>
+          <h3 class="uh-kpi-label">Beneish 8-Factor M-Score</h3>
+          <div id="beneishScore" class="uh-signal-value">-2.64</div>
+          <p class="uh-caption mt-3 pt-3 border-t uh-divider">Threshold: M &gt; -1.78 flags active earnings manipulation. Measures accrual vs cash divergence.</p>
         </div>
-        <div class="text-xl font-bold font-mono text-white" id="cccScore">54.2 days (<span class="text-emerald-400 text-sm">Δ +2.1d</span>)</div>
-        <p class="text-[11px] text-slate-400 mt-1">Working capital velocity. Alert triggered if ΔCCC &gt; +20 days while gross margins remain static.</p>
-      </div>
 
-    </div>
+        <!-- Altman Z'' Score Card -->
+        <div class="uh-card uh-signal is-good p-4">
+          <div class="flex items-center justify-between gap-2">
+            <span class="uh-signal-icon" aria-hidden="true"><span class="material-icons">health_and_safety</span></span>
+            <span id="altmanPill" class="uh-pill uh-sentence is-good">SAFE ZONE</span>
+          </div>
+          <h3 class="uh-kpi-label">Altman Z''-Score</h3>
+          <div id="altmanScore" class="uh-signal-value">3.45</div>
+          <p class="uh-caption mt-3 pt-3 border-t uh-divider">Safe (&gt;2.60) / Grey (1.10–2.60) / Distress (&lt;1.10). Services & emerging market specification.</p>
+        </div>
+
+        <!-- Cash Conversion Cycle Card -->
+        <div class="uh-card uh-signal is-good p-4">
+          <div class="flex items-center justify-between gap-2">
+            <span class="uh-signal-icon" aria-hidden="true"><span class="material-icons">autorenew</span></span>
+            <span id="cccPill" class="uh-pill uh-sentence is-good">OPTIMAL</span>
+          </div>
+          <h3 class="uh-kpi-label">Cash Conversion Cycle</h3>
+          <div id="cccScore" class="uh-signal-value">54.2 days <span class="uh-tone-text is-good text-sm">(Δ +2.1d)</span></div>
+          <p class="uh-caption mt-3 pt-3 border-t uh-divider">Working capital velocity. Alert triggered if ΔCCC &gt; +20 days while gross margins remain static.</p>
+        </div>
+
+      </div>
+    </section>
 
   </main>
 
   <!-- ========================================================================= -->
   <!-- FOOTER                                                                    -->
   <!-- ========================================================================= -->
-  <footer class="glass-panel border-t border-slate-800/80 py-4 px-6 text-xs text-slate-500 font-mono">
-    <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
+  <footer class="uh-footer">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-5 flex flex-col sm:flex-row items-center justify-between gap-1 text-center sm:text-left">
       <div>AEGIS Quantitative Structural Credit & Forensics Engine • Institutional Edition</div>
       <div>Powered by SciPy Powell Hybrid Solver & Basel Vasicek ASRF</div>
     </div>
   </footer>
 
+  <!-- Section tabs: the template's bottom tab bar, shown below 1024px -->
+  <nav class="uh-tabbar" aria-label="Sections">
+    <a href="#overview" class="uh-tab is-active" data-section="overview" aria-current="true">
+      <span class="material-icons" aria-hidden="true">dashboard</span><span>Overview</span>
+    </a>
+    <a href="#parameters" class="uh-tab" data-section="parameters">
+      <span class="material-icons" aria-hidden="true">tune</span><span>Inputs</span>
+    </a>
+    <a href="#models" class="uh-tab" data-section="models">
+      <span class="material-icons" aria-hidden="true">insights</span><span>Models</span>
+    </a>
+    <a href="#forensics" class="uh-tab" data-section="forensics">
+      <span class="material-icons" aria-hidden="true">fact_check</span><span>Forensics</span>
+    </a>
+  </nav>
+
+  <div id="snackbar" class="uh-snackbar" role="status" aria-live="polite"></div>
+
   <!-- ========================================================================= -->
   <!-- CLIENT LOGIC & REAL-TIME INTERACTION                                      -->
   <!-- ========================================================================= -->
   <script>
-    lucide.createIcons();
-
     let mertonChartInstance = null;
     let vasicekChartInstance = null;
     let debounceTimer = null;
     let activeAbortController = null;
+    let snackbarTimer = null;
+
+    // UrbanHome palette, read from the CSS tokens so the page and the charts share one source
+    const rootStyles = getComputedStyle(document.documentElement);
+    const token = (name) => rootStyles.getPropertyValue(name).trim();
+    const UH = {
+      primary: token('--uh-primary'),
+      primaryTint: token('--uh-primary-tint'),
+      red: token('--uh-red'),
+      redTint: token('--uh-red-tint'),
+      redInk: token('--uh-red-ink'),
+      orange: token('--uh-orange'),
+      orangeTint: token('--uh-orange-tint'),
+      orangeInk: token('--uh-orange-ink'),
+      dark: token('--uh-dark'),
+      grayText: token('--uh-gray-text'),
+      line: token('--uh-line')
+    };
+
+    Chart.defaults.font.family = "'Montserrat', sans-serif";
+    Chart.defaults.color = UH.grayText;
+    Chart.defaults.borderColor = UH.line;
+    Chart.defaults.animation.duration = 450;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      Chart.defaults.animation = false;
+    }
+
+    // Chart option builders: snackbar-style tooltips, gray ticks
+    const tooltipTheme = (extra = {}) => ({
+      backgroundColor: UH.dark,
+      titleColor: '#FFFFFF',
+      bodyColor: '#FFFFFF',
+      titleFont: { weight: '600' },
+      bodyFont: { weight: '500' },
+      cornerRadius: 10,
+      padding: 10,
+      displayColors: false,
+      ...extra
+    });
+    const tickTheme = (extra = {}) => ({ color: UH.grayText, font: { size: 11, weight: '500' }, ...extra });
+    const axisTitle = (text) => ({ display: true, text, color: UH.grayText, font: { size: 12, weight: '500' } });
+
+    // X axes tick at whole sigmas inside the plotted range (Chart.js would otherwise start at the data minimum)
+    const wholeSigmaTicks = (scale) => {
+      const ticks = [];
+      for (let v = Math.ceil(scale.min); v <= Math.floor(scale.max); v++) {
+        ticks.push({ value: v });
+      }
+      scale.ticks = ticks;
+    };
+
+    // Formats a sigma value with a true minus sign, e.g. −4.95σ / +3σ
+    function sigmaLabel(value, digits = 0, signed = false) {
+      const v = Number(value);
+      const text = Math.abs(v).toFixed(digits);
+      const sign = Number(text) === 0 ? '' : (v < 0 ? '−' : (signed ? '+' : ''));
+      return `${sign}${text}σ`;
+    }
+
+    // Dashed marker with a labelled pill: the default barrier (Merton) and the Basel 99.9% point (Vasicek)
+    function fillPill(ctx, x, y, w, h, fill, stroke) {
+      ctx.beginPath();
+      if (ctx.roundRect) {
+        ctx.roundRect(x, y, w, h, h / 2);
+      } else {
+        ctx.rect(x, y, w, h);
+      }
+      ctx.fillStyle = fill;
+      ctx.fill();
+      if (stroke) {
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+    }
+
+    Chart.register({
+      id: 'uhMarker',
+      afterDatasetsDraw(chart) {
+        const m = chart.$uhMarker;
+        if (!m) return;
+        const { ctx, chartArea: area, scales } = chart;
+        const x = scales.x.getPixelForValue(m.x);
+        if (!Number.isFinite(x) || x < area.left || x > area.right) return;
+
+        ctx.save();
+        ctx.strokeStyle = m.color;
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(x, area.top);
+        ctx.lineTo(x, area.bottom);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        if (m.y != null) {
+          const y = scales.y.getPixelForValue(m.y);
+          ctx.fillStyle = '#FFFFFF';
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.arc(x, y, 5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        }
+
+        ctx.font = "600 11px 'Montserrat', sans-serif";
+        const padX = 8;
+        const h = 22;
+        const gap = 6;
+        const w = ctx.measureText(m.label).width + padX * 2;
+        let left = m.side === 'left' ? x - gap - w : x + gap;
+        if (left < area.left) left = x + gap;
+        if (left + w > area.right) left = x - gap - w;
+        left = Math.max(area.left, Math.min(left, area.right - w));
+        const top = m.position === 'bottom' ? area.bottom - h - 6 : area.top + 6;
+        fillPill(ctx, left, top, w, h, '#FFFFFF');
+        fillPill(ctx, left, top, w, h, m.tint, m.color);
+        ctx.fillStyle = m.ink;
+        ctx.textBaseline = 'middle';
+        ctx.fillText(m.label, left + padX, top + h / 2 + 0.5);
+        ctx.restore();
+      }
+    });
+
+    // Status tones map to the theme's booking-status styles (.is-good / .is-warn / .is-bad)
+    const TONE_CLASSES = ['is-good', 'is-warn', 'is-bad', 'is-muted'];
+    const DIRECTIVE_ICONS = { good: 'check_circle', warn: 'error', bad: 'cancel' };
+    const STAGE_BY_TONE = { good: 1, warn: 2, bad: 3 };
+
+    function setTone(el, tone) {
+      el.classList.remove(...TONE_CLASSES);
+      el.classList.add(`is-${tone}`);
+    }
+
+    // A forensic pill also tints the icon tile of its card
+    function setSignal(pill, tone) {
+      setTone(pill, tone);
+      setTone(pill.closest('.uh-signal'), tone);
+    }
+
+    // Highlights the current IFRS 9 stage on the timeline; earlier stages show the path taken
+    function setStage(stageNumber) {
+      document.querySelectorAll('#stageSteps .uh-step').forEach((step, i) => {
+        const n = i + 1;
+        step.classList.toggle('is-past', n < stageNumber);
+        step.classList.toggle('is-current', n === stageNumber);
+        if (n === stageNumber) {
+          step.setAttribute('aria-current', 'step');
+        } else {
+          step.removeAttribute('aria-current');
+        }
+      });
+    }
+
+    // Shows the borrower being assessed on the directive card
+    function syncBorrower() {
+      document.getElementById('borrowerName').innerText = document.getElementById('inpCompany').value.trim() || 'Apex Industrial Corp';
+      document.getElementById('borrowerTicker').innerText = document.getElementById('inpTicker').value.trim() || 'APEX';
+      // Loaded figures belong to the loaded ticker: typing a different one returns to manual inputs
+      if (loadedBorrower && normalizeTicker(document.getElementById('inpTicker').value) !== loadedBorrower.ticker) {
+        clearLoadedData();
+      }
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Live borrower data: SEC filings, US Treasury yields and market prices fill the inputs
+    // -----------------------------------------------------------------------------------------
+    let loadedBorrower = null;       // last /api/v1/market/borrower response; null means manual inputs
+    let loadingBorrower = false;
+    const RANGE_DEFAULTS = {};
+    const SOURCE_LINES = {
+      srcEquity: 'equity_value',
+      srcEqVol: 'equity_volatility',
+      srcSTD: 'short_term_debt',
+      srcLTD: 'long_term_debt',
+      srcRFR: 'risk_free_rate'
+    };
+    const MANUAL_STATUS = 'Pick a company marked (A) from the Ticker or Company list, or type a US-listed ticker and press Load, to fill the inputs from SEC filings, US Treasury yields and market prices. You can also type any value into the boxes beside each slider.';
+    const TYPED_LIMITS = {
+      rngEquity: { min: 1e-6, max: Infinity, message: 'Equity value must be above zero.' },
+      rngEqVol: { min: 1, max: 500, message: 'Volatility must be between 1% and 500%.' },
+      rngSTD: { min: 0, max: Infinity, message: "Debt can't be negative." },
+      rngLTD: { min: 0, max: Infinity, message: "Debt can't be negative." },
+      rngRFR: { min: 0, max: 25, message: 'The risk-free rate must be between 0% and 25%.' }
+    };
+
+    // Sample financial statements used by the memo until a ticker is loaded ($M)
+    const SAMPLE_FORENSIC_INPUT = {
+      sales_t: 1200.0, cogs_t: 750.0, receivables_t: 180.0, current_assets_t: 500.0,
+      ppe_t: 600.0, total_assets_t: 1200.0, depreciation_t: 60.0, sga_t: 180.0,
+      net_income_t: 90.0, cash_flow_operations_t: 110.0, current_liabilities_t: 250.0,
+      long_term_debt_t: 300.0, total_liabilities_t: 550.0, inventory_t: 180.0,
+      accounts_payable_t: 120.0, ebit_t: 160.0, retained_earnings_t: 350.0,
+      book_value_equity_t: 650.0,
+      sales_t_minus_1: 1100.0, cogs_t_minus_1: 690.0, receivables_t_minus_1: 160.0,
+      current_assets_t_minus_1: 460.0, ppe_t_minus_1: 580.0, total_assets_t_minus_1: 1120.0,
+      depreciation_t_minus_1: 55.0, sga_t_minus_1: 165.0, long_term_debt_t_minus_1: 280.0,
+      total_liabilities_t_minus_1: 510.0, inventory_t_minus_1: 165.0,
+      accounts_payable_t_minus_1: 110.0
+    };
+
+    function normalizeTicker(value) {
+      return String(value || '').trim().toUpperCase().replace(/[./]/g, '-');
+    }
+
+    // $ millions as a short label: $3.96T, $31.1B, $80.0M, $45.2K
+    function formatMoneyM(valueM) {
+      const v = Number(valueM) || 0;
+      const abs = Math.abs(v);
+      if (abs >= 1e6) return `$${(v / 1e6).toFixed(2)}T`;
+      if (abs >= 1e3) return `$${(v / 1e3).toFixed(abs >= 1e5 ? 0 : abs >= 1e4 ? 1 : 2)}B`;
+      if (abs >= 1) return `$${v.toFixed(1)}M`;
+      if (abs >= 1e-3) return `$${(v * 1e3).toFixed(1)}K`;
+      return `$${Math.round(v * 1e6).toLocaleString('en-US')}`;
+    }
+
+    // Typed money in $ millions: "4.2B", "$31,090", "950M", "2T", "120K"
+    function parseMoneyM(text) {
+      const match = String(text).replace(/[$,\s]/g, '').match(/^(\d*\.?\d+)([TBMK])?$/i);
+      if (!match) return NaN;
+      return parseFloat(match[1]) * { T: 1e6, B: 1e3, M: 1, K: 1e-3 }[(match[2] || 'M').toUpperCase()];
+    }
+
+    function parsePercent(text) {
+      const match = String(text).replace(/[%\s]/g, '').match(/^\d*\.?\d+$/);
+      return match ? parseFloat(match[0]) : NaN;
+    }
+
+    function formatDate(iso) {
+      if (!iso) return '';
+      const day = new Date(`${iso.slice(0, 10)}T00:00:00`);
+      return Number.isNaN(day.getTime()) ? iso : day.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    // Rounds to 1, 2, 2.5 or 5 x 10^n so slider ends stay tidy
+    function niceCeil(x) {
+      if (!(x > 0)) return 1;
+      const base = Math.pow(10, Math.floor(Math.log10(x)));
+      return [1, 2, 2.5, 5, 10].map((m) => m * base).find((v) => v >= x * (1 - 1e-12));
+    }
+    function niceFloor(x) {
+      if (!(x > 0)) return 0;
+      const base = Math.pow(10, Math.floor(Math.log10(x)));
+      return [5, 2.5, 2, 1].map((m) => m * base).find((v) => v <= x * (1 + 1e-12));
+    }
+
+    function setSlider(id, min, max, value, step = 'any') {
+      const range = document.getElementById(id);
+      range.min = min;
+      range.max = max;
+      range.step = step;
+      range.value = value;
+      syncRangeFill(range);
+    }
+
+    function captureRangeDefaults() {
+      document.querySelectorAll('.uh-range').forEach((range) => {
+        RANGE_DEFAULTS[range.id] = { min: range.min, max: range.max, step: range.step, value: range.value };
+      });
+    }
+
+    // Writes the slider values into the editable boxes, leaving alone one the user is typing in
+    function refreshValueChips() {
+      const read = (id) => parseFloat(document.getElementById(id).value);
+      const shown = {
+        valEquity: formatMoneyM(read('rngEquity')),
+        valEqVol: `${read('rngEqVol').toFixed(1)}%`,
+        valSTD: formatMoneyM(read('rngSTD')),
+        valLTD: formatMoneyM(read('rngLTD')),
+        valRFR: `${read('rngRFR').toFixed(2)}%`
+      };
+      Object.entries(shown).forEach(([id, text]) => {
+        const chip = document.getElementById(id);
+        if (document.activeElement !== chip) chip.value = text;
+      });
+    }
+
+    // A typed value moves its slider, widening the slider's range when the value falls outside it
+    function commitTypedValue(chip) {
+      const range = document.getElementById(chip.dataset.target);
+      const value = chip.dataset.kind === 'money' ? parseMoneyM(chip.value) : parsePercent(chip.value);
+      const limits = TYPED_LIMITS[range.id];
+      if (!Number.isFinite(value) || value < limits.min || value > limits.max) {
+        showSnackbar(Number.isFinite(value) ? limits.message : 'Type a number such as 4.2B, 950M or 35%.');
+        return;
+      }
+      let min = parseFloat(range.min);
+      let max = parseFloat(range.max);
+      if (value > max) {
+        max = range.id === 'rngRFR' ? 25 : range.id === 'rngEqVol' ? Math.min(500, niceCeil(value * 1.5)) : niceCeil(value * 2);
+      }
+      if (value < min) {
+        min = range.id === 'rngEquity' ? niceFloor(value / 2) : range.id === 'rngEqVol' ? 1 : 0;
+      }
+      setSlider(range.id, min, max, value);
+      handleParamChange();
+    }
+
+    function initValueChips() {
+      document.querySelectorAll('.uh-chip-input').forEach((chip) => {
+        chip.addEventListener('focus', () => {
+          chip.dataset.before = chip.value;
+          chip.select();
+        });
+        chip.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            chip.blur();
+          } else if (event.key === 'Escape') {
+            chip.value = chip.dataset.before;
+            chip.blur();
+          }
+        });
+        chip.addEventListener('blur', () => {
+          if (chip.value !== chip.dataset.before) commitTypedValue(chip);
+          refreshValueChips();
+        });
+      });
+    }
+
+    async function loadBorrowerData() {
+      const ticker = normalizeTicker(document.getElementById('inpTicker').value);
+      if (!ticker || loadingBorrower) return;
+      loadingBorrower = true;
+      const button = document.getElementById('btnLoadData');
+      button.disabled = true;
+      renderDataStatus('loading', { ticker });
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 60000);
+      try {
+        const response = await fetch(`/api/v1/market/borrower?ticker=${encodeURIComponent(ticker)}`, { signal: controller.signal });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(typeof body.detail === 'string' ? body.detail : `The server answered with status ${response.status}.`);
+        }
+        applyBorrowerData(body);
+        const notes = body.warnings.length;
+        showSnackbar(notes ? `Loaded ${body.company_name} with ${notes} note${notes > 1 ? 's' : ''}` : `Loaded ${body.company_name}`);
+      } catch (err) {
+        const message = err.name === 'AbortError'
+          ? 'Loading took longer than a minute. Try again.'
+          : err instanceof TypeError ? "Couldn't reach the Aegis server." : err.message;
+        renderDataStatus('error', { ticker, message });
+        showSnackbar(message);
+      } finally {
+        clearTimeout(timer);
+        button.disabled = false;
+        loadingBorrower = false;
+      }
+    }
+
+    function applyBorrowerData(data) {
+      loadedBorrower = data;
+      document.getElementById('inpTicker').value = data.ticker;
+      document.getElementById('inpCompany').value = data.company_name;
+      syncBorrower();
+      applyLoadedInputs();
+      Object.entries(SOURCE_LINES).forEach(([id, key]) => setSource(id, data[key]));
+      renderDataStatus('loaded', data);
+      // A newly loaded borrower starts from its filed position, without simulated stress
+      document.getElementById('chkManipulator').checked = false;
+      document.getElementById('chkCCCAlert').checked = false;
+      handleParamChange();
+    }
+
+    // Moves the sliders to the loaded values, with ranges sized to this borrower
+    function applyLoadedInputs() {
+      const value = (key) => (loadedBorrower[key] && loadedBorrower[key].value != null ? Number(loadedBorrower[key].value) : null);
+      const E = value('equity_value');
+      const vol = value('equity_volatility');
+      const std = value('short_term_debt');
+      const ltd = value('long_term_debt');
+      const r = value('risk_free_rate');
+      const debt = (std || 0) + (ltd || 0);
+      if (E !== null && E > 0) {
+        setSlider('rngEquity', niceFloor(E * 0.1), niceCeil(E * 2.5), E);
+      } else {
+        // No price: widen the range to the borrower's scale so a typed or dragged value fits
+        const range = document.getElementById('rngEquity');
+        setSlider('rngEquity', range.min, Math.max(parseFloat(range.max), niceCeil(debt * 3)), range.value, range.step);
+      }
+      if (vol !== null) setSlider('rngEqVol', Math.min(5, Math.max(1, Math.floor(vol * 50))), Math.max(100, niceCeil(vol * 250)), vol * 100);
+      if (std !== null) setSlider('rngSTD', 0, niceCeil(Math.max(std * 3, debt * 0.5, 1)), std);
+      if (ltd !== null) setSlider('rngLTD', 0, niceCeil(Math.max(ltd * 3, debt * 0.5, 1)), ltd);
+      if (r !== null) setSlider('rngRFR', 0, Math.max(10, niceCeil(r * 150)), r * 100);
+    }
+
+    function setSource(id, point) {
+      const line = document.getElementById(id);
+      if (!point || point.value === null || point.value === undefined) {
+        line.hidden = true;
+        line.textContent = '';
+        return;
+      }
+      line.textContent = `${point.source} · ${formatDate(point.as_of)}${point.detail ? `\n${point.detail}` : ''}`;
+      line.hidden = false;
+    }
+
+    function clearLoadedData() {
+      loadedBorrower = null;
+      Object.keys(SOURCE_LINES).forEach((id) => setSource(id, null));
+      renderDataStatus('manual');
+      handleParamChange();
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Ticker and company dropdowns: every SEC ticker, companies marked (A) load automatically.
+    // Picking one fills both fields (and loads it when it's marked (A)); typing an exact ticker
+    // or company name fills the other field.
+    // -----------------------------------------------------------------------------------------
+    let companyDirectory = null;      // [{t, n, x, a, lt, ln}]: (A) companies first, then SEC order
+    let directoryRequest = null;
+    let automaticCount = 0;
+    const combo = { input: null, results: [], active: -1, typed: false };
+    const COMBO_LIMIT = 60;
+
+    function loadCompanyDirectory() {
+      if (!directoryRequest) {
+        directoryRequest = fetch('/api/v1/market/companies')
+          .then(async (response) => {
+            const body = await response.json().catch(() => ({}));
+            if (!response.ok) {
+              throw new Error(typeof body.detail === 'string' ? body.detail : `The server answered with status ${response.status}.`);
+            }
+            automaticCount = body.automatic_count;
+            companyDirectory = body.companies.map(([t, n, x, a]) => ({ t, n, x, a: a === 1, lt: t.toLowerCase(), ln: n.toLowerCase() }));
+            return companyDirectory;
+          })
+          .catch((err) => {
+            directoryRequest = null;
+            throw err;
+          });
+      }
+      return directoryRequest;
+    }
+
+    // 0 exact, 1 ticker starts with it, 2 name starts with it, 3 a word in the name does,
+    // 4 the name contains it (only for 4+ characters, so "tsm" doesn't match "Huntsman")
+    function matchScore(entry, tickerQuery, nameQuery) {
+      if (!nameQuery) return 4;
+      if (entry.lt === tickerQuery || entry.ln === nameQuery) return 0;
+      if (entry.lt.startsWith(tickerQuery)) return 1;
+      if (entry.ln.startsWith(nameQuery)) return 2;
+      if (entry.ln.includes(` ${nameQuery}`)) return 3;
+      if (nameQuery.length >= 4 && entry.ln.includes(nameQuery)) return 4;
+      return -1;
+    }
+
+    // Companies marked (A) first, then the closest matches, then the SEC's order (about market value)
+    function searchCompanies(query) {
+      const nameQuery = query.trim().toLowerCase();
+      if (!nameQuery) return companyDirectory.slice(0, COMBO_LIMIT);
+      const tickerQuery = nameQuery.replace(/[./]/g, '-');
+      const hits = [];
+      companyDirectory.forEach((entry, index) => {
+        const score = matchScore(entry, tickerQuery, nameQuery);
+        if (score >= 0) hits.push({ entry, score, index });
+      });
+      hits.sort((a, b) => (b.entry.a - a.entry.a) || (a.score - b.score) || (a.index - b.index));
+      return hits.slice(0, COMBO_LIMIT).map((hit) => hit.entry);
+    }
+
+    function comboList() {
+      return document.getElementById('companyOptions');
+    }
+
+    function openCombo(input) {
+      const list = comboList();
+      if (combo.input && combo.input !== input) closeCombo();
+      combo.input = input;
+      combo.typed = false;
+      input.closest('.uh-combo').append(list);
+      input.closest('.uh-combo').classList.add('is-open');
+      input.setAttribute('aria-expanded', 'true');
+      list.hidden = false;
+      if (companyDirectory) {
+        refreshCombo();
+        return;
+      }
+      renderComboMessage('Loading the SEC company list…');
+      loadCompanyDirectory()
+        .then(() => {
+          if (combo.input !== input) return;
+          refreshCombo();
+          if (combo.typed) fillCounterpart(input);     // typed before the list arrived
+        })
+        .catch((err) => { if (combo.input === input) renderComboMessage(err.message); });
+    }
+
+    function closeCombo() {
+      if (!combo.input) return;
+      combo.input.setAttribute('aria-expanded', 'false');
+      combo.input.removeAttribute('aria-activedescendant');
+      combo.input.closest('.uh-combo').classList.remove('is-open');
+      comboList().hidden = true;
+      combo.input = null;
+      combo.active = -1;
+    }
+
+    function renderComboMessage(message) {
+      const list = comboList();
+      list.replaceChildren();
+      const item = document.createElement('li');
+      item.className = 'uh-options-message';
+      item.setAttribute('role', 'presentation');
+      item.textContent = message;
+      list.append(item);
+    }
+
+    function refreshCombo() {
+      if (!combo.input || !companyDirectory) return;
+      // A field that still shows its earlier value lists everything until the user types
+      combo.results = searchCompanies(combo.typed ? combo.input.value : '');
+      combo.active = -1;
+      const list = comboList();
+      list.replaceChildren();
+      if (!combo.results.length) {
+        renderComboMessage('No SEC-registered company matches. You can still type its figures by hand.');
+        return;
+      }
+      combo.results.forEach((entry, i) => {
+        const option = document.createElement('li');
+        option.id = `companyOption${i}`;
+        option.className = `uh-option ${entry.a ? 'is-auto' : 'is-manual'}`;
+        option.setAttribute('role', 'option');
+        option.setAttribute('aria-selected', 'false');
+        option.title = entry.a ? 'Loads automatically from SEC filings' : 'No 10-K/10-Q reports: enter its figures by hand';
+        const parts = [
+          ['uh-option-auto', entry.a ? '(A)' : ''],
+          ['uh-option-ticker', entry.t],
+          ['uh-option-name', entry.n],
+          ['uh-option-exchange', entry.x]
+        ];
+        parts.forEach(([className, text]) => {
+          const span = document.createElement('span');
+          span.className = className;
+          span.textContent = text;
+          option.append(span);
+        });
+        option.addEventListener('mousedown', (event) => {
+          event.preventDefault();                       // keep focus until the choice is applied
+          chooseCompany(entry);
+        });
+        list.append(option);
+      });
+      const note = document.createElement('li');
+      note.className = 'uh-options-note';
+      note.setAttribute('role', 'presentation');
+      note.textContent = `(A) fills automatically from SEC filings: ${automaticCount.toLocaleString('en-US')} of ${companyDirectory.length.toLocaleString('en-US')} tickers. Type to search by ticker or name.`;
+      list.append(note);
+    }
+
+    function moveActive(step) {
+      if (!combo.results.length) return;
+      combo.active = (combo.active + step + combo.results.length) % combo.results.length;
+      comboList().querySelectorAll('.uh-option').forEach((option, i) => {
+        const on = i === combo.active;
+        option.classList.toggle('is-active', on);
+        option.setAttribute('aria-selected', on ? 'true' : 'false');
+        if (on) {
+          option.scrollIntoView({ block: 'nearest' });
+          combo.input.setAttribute('aria-activedescendant', option.id);
+        }
+      });
+    }
+
+    function chooseCompany(entry) {
+      const ticker = document.getElementById('inpTicker');
+      const company = document.getElementById('inpCompany');
+      ticker.value = entry.t;
+      company.value = entry.n;
+      closeCombo();
+      syncBorrower();
+      if (entry.a) {
+        loadBorrowerData();
+      } else {
+        renderDataStatus('unsupported', { ticker: entry.t, name: entry.n });
+      }
+    }
+
+    // Typing an exact ticker fills the company, and typing an exact company name fills the ticker.
+    // A value filled this way is cleared again when the typed text stops matching.
+    function fillCounterpart(input) {
+      if (!companyDirectory) return;
+      const isTicker = input.id === 'inpTicker';
+      const other = document.getElementById(isTicker ? 'inpCompany' : 'inpTicker');
+      const value = input.value.trim().toLowerCase();
+      const hit = !value ? null : isTicker
+        ? companyDirectory.find((entry) => entry.lt === value.replace(/[./]/g, '-'))
+        : companyDirectory.find((entry) => entry.ln === value);
+      if (hit) {
+        other.value = isTicker ? hit.n : hit.t;
+        other.dataset.autofilled = '1';
+      } else if (other.dataset.autofilled) {
+        other.value = '';
+        delete other.dataset.autofilled;
+      }
+      syncBorrower();
+    }
+
+    function initCompanyCombos() {
+      ['inpTicker', 'inpCompany'].forEach((id) => {
+        const input = document.getElementById(id);
+        input.addEventListener('focus', () => openCombo(input));
+        input.addEventListener('click', () => { if (combo.input !== input) openCombo(input); });
+        input.addEventListener('input', () => {
+          delete input.dataset.autofilled;
+          if (combo.input !== input) openCombo(input);
+          combo.typed = true;
+          refreshCombo();
+          fillCounterpart(input);
+        });
+        input.addEventListener('keydown', (event) => {
+          const open = combo.input === input && !comboList().hidden;
+          if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            if (open) moveActive(1); else openCombo(input);
+          } else if (event.key === 'ArrowUp' && open) {
+            event.preventDefault();
+            moveActive(-1);
+          } else if (event.key === 'Enter') {
+            event.preventDefault();
+            if (open && combo.active >= 0) {
+              chooseCompany(combo.results[combo.active]);
+            } else if (input.id === 'inpTicker') {
+              closeCombo();
+              loadBorrowerData();
+            } else if (open && combo.typed && combo.results.length) {
+              chooseCompany(combo.results[0]);
+            }
+          } else if (event.key === 'Escape' && open) {
+            event.preventDefault();
+            closeCombo();
+          }
+        });
+        input.addEventListener('blur', () => setTimeout(() => { if (combo.input === input) closeCombo(); }, 150));
+        input.closest('.uh-field').querySelector('.uh-combo-caret').addEventListener('mousedown', (event) => {
+          event.preventDefault();
+          if (combo.input === input) closeCombo(); else input.focus();
+        });
+      });
+    }
+
+    // Status box under the ticker: manual, loading, loaded (with notes) or error. Built with
+    // textContent because company names and messages come from outside sources.
+    function renderDataStatus(state, data = {}) {
+      const box = document.getElementById('dataStatus');
+      box.className = `uh-data-status is-${state === 'unsupported' ? 'manual' : state}`;
+      box.replaceChildren();
+      if (state === 'manual') {
+        box.textContent = MANUAL_STATUS;
+        return;
+      }
+      const make = (tag, className, text) => {
+        const node = document.createElement(tag);
+        if (className) node.className = className;
+        if (text !== undefined) node.textContent = text;
+        return node;
+      };
+      const title = make('div', 'uh-data-status-title');
+      const icon = make('span', 'material-icons is-sm');
+      icon.setAttribute('aria-hidden', 'true');
+      const heading = make('span');
+      title.append(icon, heading);
+      box.append(title);
+      if (state === 'unsupported') {
+        icon.textContent = 'edit_note';
+        heading.textContent = `${data.ticker} needs figures by hand`;
+        box.append(make('div', 'mt-1', `${data.name} doesn't file 10-K or 10-Q reports with the SEC (it may be a foreign company or a fund), so its inputs can't be filled automatically. Type its values into the boxes beside each slider.`));
+      } else if (state === 'loading') {
+        icon.textContent = 'sync';
+        heading.textContent = `Loading ${data.ticker}…`;
+        box.append(make('div', 'mt-1', 'Reading SEC filings, US Treasury yields and market prices.'));
+      } else if (state === 'error') {
+        icon.textContent = 'error';
+        heading.textContent = `Couldn't load ${data.ticker}`;
+        box.append(make('div', 'mt-1', data.message));
+      } else {
+        icon.textContent = 'verified';
+        heading.textContent = `${data.company_name} · filled from public data`;
+        if (data.is_bank) {
+          title.append(make('span', 'uh-badge', 'Bank'));
+        } else if (data.forensics_applicable === false) {
+          title.append(make('span', 'uh-badge', 'Financial'));
+        }
+        const industry = data.sic_description ? ` · ${data.sic_description}` : '';
+        box.append(make('div', 'mt-1 uh-caption', `SEC CIK ${data.cik}${industry}. Each input shows its source; you can still change any value.`));
+        if (data.warnings && data.warnings.length) {
+          const list = make('ul', 'uh-data-notes');
+          data.warnings.forEach((note) => {
+            const item = make('li');
+            const mark = make('span', 'material-icons', 'info');
+            mark.setAttribute('aria-hidden', 'true');
+            item.append(mark, make('span', '', note));
+            list.append(item);
+          });
+          box.append(list);
+        }
+      }
+    }
+
+    // Paints the filled part of a slider track up to the thumb
+    function syncRangeFill(range) {
+      const span = range.max - range.min;
+      range.style.setProperty('--p', span > 0 ? (range.value - range.min) / span : 0);
+    }
+
+    function showSnackbar(message) {
+      const bar = document.getElementById('snackbar');
+      bar.innerText = message;
+      bar.classList.add('is-visible');
+      clearTimeout(snackbarTimer);
+      snackbarTimer = setTimeout(() => bar.classList.remove('is-visible'), 4000);
+    }
+
+    // Keeps the tab bar in step with the section being read
+    function initSectionTabs() {
+      const tabs = Array.from(document.querySelectorAll('.uh-tab'));
+      const sections = tabs.map((tab) => document.getElementById(tab.dataset.section));
+      const update = () => {
+        const probe = window.innerHeight * 0.35;
+        let active = 0;
+        sections.forEach((section, i) => {
+          if (section.getBoundingClientRect().top <= probe) active = i;
+        });
+        if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4) {
+          active = sections.length - 1;
+        }
+        tabs.forEach((tab, i) => {
+          tab.classList.toggle('is-active', i === active);
+          if (i === active) {
+            tab.setAttribute('aria-current', 'true');
+          } else {
+            tab.removeAttribute('aria-current');
+          }
+        });
+      };
+      window.addEventListener('scroll', update, { passive: true });
+      window.addEventListener('resize', update);
+      update();
+    }
 
     // Standard Normal CDF approximation
     function normalCDF(x) {
@@ -435,56 +2249,67 @@
     }
 
     function initCharts() {
+      const hoverPoint = {
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        pointHoverBackgroundColor: '#FFFFFF',
+        pointHoverBorderWidth: 2
+      };
+
       // 1. Merton Density Chart
       const ctxMerton = document.getElementById('mertonChart').getContext('2d');
       mertonChartInstance = new Chart(ctxMerton, {
         type: 'line',
         data: {
-          labels: [],
           datasets: [
             {
               label: 'Asset Return PDF φ(x)',
               data: [],
-              borderColor: '#38bdf8',
-              backgroundColor: 'rgba(14, 165, 233, 0.08)',
-              borderWidth: 2,
-              pointRadius: 0,
+              borderColor: UH.primary,
+              backgroundColor: UH.primaryTint,
+              borderWidth: 2.5,
               fill: true,
-              tension: 0.3
+              tension: 0.3,
+              ...hoverPoint
             },
             {
               label: 'Default Tail Region',
               data: [],
-              borderColor: '#f43f5e',
-              backgroundColor: 'rgba(244, 63, 94, 0.3)',
+              borderColor: UH.red,
+              backgroundColor: 'rgba(255, 0, 0, 0.2)',
               borderWidth: 1.5,
-              pointRadius: 0,
-              fill: true
+              fill: true,
+              ...hoverPoint
             }
           ]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          interaction: { mode: 'nearest', axis: 'x', intersect: false },
           plugins: {
-            legend: {
-              labels: { color: '#94a3b8', font: { family: 'JetBrains Mono', size: 10 } }
-            },
-            tooltip: {
-              backgroundColor: '#0f172a',
-              titleColor: '#38bdf8',
-              borderColor: '#1e293b',
-              borderWidth: 1
-            }
+            legend: { display: false },
+            tooltip: tooltipTheme({
+              callbacks: {
+                title: (items) => `x = ${sigmaLabel(items[0].parsed.x, 1)}`,
+                label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(4)}`
+              }
+            })
           },
           scales: {
             x: {
-              grid: { color: 'rgba(255, 255, 255, 0.05)' },
-              ticks: { color: '#64748b', font: { family: 'JetBrains Mono', size: 9 } }
+              type: 'linear',
+              bounds: 'data',
+              grid: { display: false },
+              border: { color: UH.line },
+              afterBuildTicks: wholeSigmaTicks,
+              ticks: tickTheme({ maxRotation: 0, callback: (v) => sigmaLabel(v) })
             },
             y: {
-              grid: { color: 'rgba(255, 255, 255, 0.05)' },
-              ticks: { color: '#64748b', font: { family: 'JetBrains Mono', size: 9 } }
+              beginAtZero: true,
+              grid: { color: UH.line },
+              border: { display: false },
+              ticks: tickTheme({ maxTicksLimit: 6 })
             }
           }
         }
@@ -495,51 +2320,55 @@
       vasicekChartInstance = new Chart(ctxVasicek, {
         type: 'line',
         data: {
-          labels: [],
           datasets: [
             {
               label: 'Conditional Default Probability PD(Z)',
               data: [],
-              borderColor: '#10b981',
-              backgroundColor: 'rgba(16, 185, 129, 0.1)',
+              borderColor: UH.primary,
+              backgroundColor: UH.primaryTint,
               borderWidth: 2.5,
-              pointRadius: 0,
               fill: true,
-              tension: 0.3
+              tension: 0.3,
+              ...hoverPoint
             }
           ]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          interaction: { mode: 'nearest', axis: 'x', intersect: false },
           plugins: {
-            legend: {
-              labels: { color: '#94a3b8', font: { family: 'JetBrains Mono', size: 10 } }
-            },
-            tooltip: {
-              backgroundColor: '#0f172a',
-              titleColor: '#10b981',
-              borderColor: '#1e293b',
-              borderWidth: 1,
+            legend: { display: false },
+            tooltip: tooltipTheme({
               callbacks: {
+                title: (items) => `Z = ${sigmaLabel(items[0].parsed.x, 1, true)}`,
                 label: (ctx) => `PD(Z): ${(ctx.parsed.y * 100).toFixed(2)}%`
               }
-            }
+            })
           },
           scales: {
             x: {
-              title: { display: true, text: 'Macroeconomic Systemic Shock (Z in σ)', color: '#64748b', font: { family: 'JetBrains Mono', size: 10 } },
-              grid: { color: 'rgba(255, 255, 255, 0.05)' },
-              ticks: { color: '#64748b', font: { family: 'JetBrains Mono', size: 9 } }
+              type: 'linear',
+              bounds: 'data',
+              title: axisTitle('Macroeconomic Systemic Shock (Z in σ)'),
+              grid: { display: false },
+              border: { color: UH.line },
+              afterBuildTicks: wholeSigmaTicks,
+              ticks: tickTheme({ maxRotation: 0, callback: (v) => sigmaLabel(v, 0, true) })
             },
             y: {
-              title: { display: true, text: 'Conditional PD (%)', color: '#64748b', font: { family: 'JetBrains Mono', size: 10 } },
-              grid: { color: 'rgba(255, 255, 255, 0.05)' },
-              ticks: {
-                color: '#64748b',
-                font: { family: 'JetBrains Mono', size: 9 },
-                callback: (val) => `${(val * 100).toFixed(1)}%`
-              }
+              beginAtZero: true,
+              title: axisTitle('Conditional PD (%)'),
+              grid: { color: UH.line },
+              border: { display: false },
+              ticks: tickTheme({
+                maxTicksLimit: 6,
+                callback: (val, index, ticks) => {
+                  const stepPct = ticks.length > 1 ? Math.abs(ticks[1].value - ticks[0].value) * 100 : 1;
+                  const digits = Math.min(4, Math.max(0, -Math.floor(Math.log10(stepPct))));
+                  return `${(val * 100).toFixed(digits)}%`;
+                }
+              })
             }
           }
         }
@@ -547,7 +2376,6 @@
     }
 
     function updateMertonChart(dd, pit_pd) {
-      const labels = [];
       const densityData = [];
       const defaultTailData = [];
 
@@ -558,41 +2386,58 @@
       const step = 0.1;
 
       for (let x = xMin; x <= xMax; x += step) {
-        labels.push(x.toFixed(1) + 'σ');
         const pdf = normalPDF(x);
-        densityData.push(pdf);
+        densityData.push({ x, y: pdf });
         if (x <= barrier) {
-          defaultTailData.push(pdf);
-        } else {
-          defaultTailData.push(null);
+          defaultTailData.push({ x, y: pdf });
         }
       }
+      // Close the shaded tail exactly at the barrier
+      defaultTailData.push({ x: barrier, y: normalPDF(barrier) });
 
-      mertonChartInstance.data.labels = labels;
       mertonChartInstance.data.datasets[0].data = densityData;
       mertonChartInstance.data.datasets[1].data = defaultTailData;
+      mertonChartInstance.$uhMarker = {
+        x: barrier,
+        color: UH.red,
+        tint: UH.redTint,
+        ink: UH.redInk,
+        label: `−DD = ${sigmaLabel(barrier, 2)}`,
+        side: dd > 2 ? 'right' : 'left',
+        position: 'top'
+      };
       mertonChartInstance.update();
     }
 
     function updateVasicekChart(pit_pd, rho) {
-      const labels = [];
       const condPDData = [];
+
+      // Vasicek formula: Phi([Phi^-1(PD) + sqrt(rho)*Z] / sqrt(1 - rho))
+      // Approximate Phi^-1
+      const clampedPD = Math.min(Math.max(pit_pd, 1e-5), 0.999);
+      const invNormPD = Math.sqrt(2) * erfinv(2 * clampedPD - 1);
+      const conditionalPD = (z) => normalCDF((invNormPD + Math.sqrt(rho) * z) / Math.sqrt(1 - rho));
 
       // Z ranges from -3.0 to +3.5
       for (let z = -3.0; z <= 3.5; z += 0.2) {
-        labels.push((z >= 0 ? '+' : '') + z.toFixed(1) + 'σ');
-        
-        // Vasicek formula: Phi([Phi^-1(PD) + sqrt(rho)*Z] / sqrt(1 - rho))
-        // Approximate Phi^-1
-        const clampedPD = Math.min(Math.max(pit_pd, 1e-5), 0.999);
-        const invNormPD = Math.sqrt(2) * erfinv(2 * clampedPD - 1);
-        const arg = (invNormPD + Math.sqrt(rho) * z) / Math.sqrt(1 - rho);
-        const condPD = normalCDF(arg);
-        condPDData.push(condPD);
+        condPDData.push({ x: z, y: conditionalPD(z) });
       }
 
-      vasicekChartInstance.data.labels = labels;
+      // Basel IRB capital sits at the 99.9% quantile of the systematic factor: Z = Phi^-1(0.999)
+      const zVaR = 3.0902;
+      const pdVaR = conditionalPD(zVaR);
+
       vasicekChartInstance.data.datasets[0].data = condPDData;
+      vasicekChartInstance.$uhMarker = {
+        x: zVaR,
+        y: pdVaR,
+        color: UH.orange,
+        tint: UH.orangeTint,
+        ink: UH.orangeInk,
+        label: `99.9% VaR · PD ${(pdVaR * 100).toFixed(2)}%`,
+        side: 'left',
+        position: 'bottom'
+      };
       vasicekChartInstance.update();
     }
 
@@ -622,13 +2467,10 @@
       const simCCC = document.getElementById('chkCCCAlert').checked;
 
       // Update UI numbers
-      document.getElementById('valEquity').innerText = `$${E.toFixed(1)}M`;
-      document.getElementById('valEqVol').innerText = `${(eqVol * 100).toFixed(1)}%`;
-      document.getElementById('valSTD').innerText = `$${std.toFixed(1)}M`;
-      document.getElementById('valLTD').innerText = `$${ltd.toFixed(1)}M`;
-      document.getElementById('valRFR').innerText = `${(r * 100).toFixed(2)}%`;
+      refreshValueChips();
+      document.querySelectorAll('.uh-range').forEach(syncRangeFill);
       const barrier = std + 0.5 * ltd;
-      document.getElementById('dispBarrier').innerText = `$${barrier.toFixed(1)}M`;
+      document.getElementById('dispBarrier').innerText = formatMoneyM(barrier);
 
       const payload = {
         equity_value: E,
@@ -664,7 +2506,7 @@
     function renderResults(m, simManip, simCCC) {
       document.getElementById('kpiDD').innerText = `${m.distance_to_default_physical.toFixed(2)}σ`;
       document.getElementById('kpiPD').innerText = `PD: ${(m.default_probability_physical * 100).toFixed(3)}%`;
-      document.getElementById('kpiVA').innerText = `$${m.asset_value.toFixed(1)}M`;
+      document.getElementById('kpiVA').innerText = formatMoneyM(m.asset_value);
       document.getElementById('kpiSigmaA').innerText = `σA: ${(m.asset_volatility * 100).toFixed(1)}%`;
       document.getElementById('kpiSpread').innerText = `${m.credit_spread_bps.toFixed(1)} bps`;
 
@@ -672,46 +2514,75 @@
       const totalDebt = m.default_barrier * 1.25;
       const baseECL = m.default_probability_physical * 0.45 * totalDebt;
       const multiPeriodECL = simManip || m.distance_to_default_physical < 2.0 ? baseECL * 3.8 : baseECL * 1.1;
-      document.getElementById('kpiECL').innerText = `$${(multiPeriodECL * 1000).toLocaleString('en-US', {maximumFractionDigits: 0})}`;
+      document.getElementById('kpiECL').innerText = formatMoneyM(multiPeriodECL);
       document.getElementById('kpiECLPct').innerText = `${((multiPeriodECL / (totalDebt + 1e-6)) * 100).toFixed(2)}% EAD`;
 
-      // Forensics updates
-      const mScore = simManip ? -1.45 : -2.62;
-      const zScore = simManip || m.distance_to_default_physical < 1.2 ? 0.95 : (m.distance_to_default_physical < 2.5 ? 1.85 : 3.42);
-      const cccDays = simCCC ? "+26.4 days" : "+2.1 days";
+      // Forensics: the borrower's filed annual reports once a ticker is loaded, otherwise the sample
+      // scenario. The two "Simulate" switches override either with a stressed case. Beneish, Altman
+      // and the cash cycle are calibrated on non-financial companies, so they don't count for banks.
+      const dd = m.distance_to_default_physical;
+      const filed = loadedBorrower && loadedBorrower.forensic_analysis ? loadedBorrower.forensic_analysis : null;
+      const financial = Boolean(loadedBorrower && loadedBorrower.forensics_applicable === false);
+      const scoresApply = !financial || simManip;
+      const cccApplies = !financial || simCCC;
+
+      const mScore = simManip ? -1.45 : (filed ? filed.beneish.m_score : -2.62);
+      const zScore = simManip ? 0.95 : (filed ? filed.altman.z_double_prime : (dd < 1.2 ? 0.95 : (dd < 2.5 ? 1.85 : 3.42)));
+      const manipFlag = scoresApply && mScore > -1.78;
 
       document.getElementById('beneishScore').innerText = mScore.toFixed(2);
       const bPill = document.getElementById('beneishPill');
-      if (mScore > -1.78) {
+      if (!scoresApply) {
+        bPill.innerText = 'NOT USED FOR FINANCIALS';
+        setSignal(bPill, 'muted');
+      } else if (manipFlag) {
         bPill.innerText = 'MANIPULATION WARNING';
-        bPill.className = 'text-[10px] font-mono px-2 py-0.5 rounded font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30';
+        setSignal(bPill, 'bad');
       } else {
         bPill.innerText = 'CLEAN';
-        bPill.className = 'text-[10px] font-mono px-2 py-0.5 rounded font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+        setSignal(bPill, 'good');
       }
 
       document.getElementById('altmanScore').innerText = zScore.toFixed(2);
       const zPill = document.getElementById('altmanPill');
-      if (zScore > 2.60) {
+      if (!scoresApply) {
+        zPill.innerText = 'NOT USED FOR FINANCIALS';
+        setSignal(zPill, 'muted');
+      } else if (zScore > 2.60) {
         zPill.innerText = 'SAFE ZONE';
-        zPill.className = 'text-[10px] font-mono px-2 py-0.5 rounded font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+        setSignal(zPill, 'good');
       } else if (zScore >= 1.10) {
         zPill.innerText = 'GREY ZONE';
-        zPill.className = 'text-[10px] font-mono px-2 py-0.5 rounded font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30';
+        setSignal(zPill, 'warn');
       } else {
         zPill.innerText = 'DISTRESS';
-        zPill.className = 'text-[10px] font-mono px-2 py-0.5 rounded font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30';
+        setSignal(zPill, 'bad');
       }
 
-      const cPill = document.getElementById('cccPill');
+      let cccValue = 54.2;
+      let cccDays = '+2.1 days';
+      let cccAlert = false;
       if (simCCC) {
-        document.getElementById('cccScore').innerHTML = `78.5 days (<span class="text-rose-400 text-sm">Δ ${cccDays}</span>)`;
-        cPill.innerText = 'STRESS ALERT';
-        cPill.className = 'text-[10px] font-mono px-2 py-0.5 rounded font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30';
+        cccValue = 78.5;
+        cccDays = '+26.4 days';
+        cccAlert = true;
+      } else if (filed) {
+        cccValue = filed.ccc.ccc_t;
+        cccDays = `${filed.ccc.delta_ccc >= 0 ? '+' : ''}${filed.ccc.delta_ccc.toFixed(1)} days`;
+        cccAlert = cccApplies && filed.ccc.warning_triggered;
+      }
+      const cccTone = !cccApplies ? 'muted' : (cccAlert ? 'bad' : 'good');
+      document.getElementById('cccScore').innerHTML = `${cccValue.toFixed(1)} days <span class="uh-tone-text is-${cccTone} text-sm">(Δ ${cccDays})</span>`;
+      const cPill = document.getElementById('cccPill');
+      cPill.innerText = !cccApplies ? 'NOT USED FOR FINANCIALS' : (cccAlert ? 'STRESS ALERT' : 'OPTIMAL');
+      setSignal(cPill, cccTone);
+
+      const basis = document.getElementById('forensicBasis');
+      if (filed) {
+        const years = `FY${loadedBorrower.fiscal_year_end.slice(0, 4)} vs FY${loadedBorrower.prior_fiscal_year_end.slice(0, 4)}`;
+        basis.innerText = `Filed financials · ${years}${financial ? ' · not used for financial companies' : ''}`;
       } else {
-        document.getElementById('cccScore').innerHTML = `54.2 days (<span class="text-emerald-400 text-sm">Δ ${cccDays}</span>)`;
-        cPill.innerText = 'OPTIMAL';
-        cPill.className = 'text-[10px] font-mono px-2 py-0.5 rounded font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+        basis.innerText = loadedBorrower ? 'Sample financials · the filings lack some figures' : 'Sample financials · load a ticker to use filed figures';
       }
 
       // Directive & Rating
@@ -722,37 +2593,46 @@
       const stage = document.getElementById('stageBadge');
       const fTier = document.getElementById('forensicTierBadge');
 
-      if (m.distance_to_default_physical < 1.0 || zScore < 1.10) {
+      let tone;
+      if (dd < 1.0 || (scoresApply && zScore < 1.10)) {
+        tone = 'bad';
         badge.innerText = 'CCC/D';
-        badge.className = 'text-xs font-mono font-bold px-2 py-0.5 rounded bg-rose-500/20 text-rose-400 border border-rose-500/30';
         title.innerText = 'REJECT / RESTRUCTURING WATCH';
         desc.innerText = 'Severe default hazard; latent assets approach debt barrier with critically impaired equity cushion.';
-        banner.className = 'p-4 rounded-2xl glass-card border-l-4 border-l-rose-500 flex flex-col md:flex-row md:items-center justify-between gap-4';
         stage.innerText = 'Stage 3 (Credit Impaired)';
-        stage.className = 'text-xs font-mono font-bold text-rose-400';
         fTier.innerText = 'Critical Risk';
-        fTier.className = 'text-xs font-mono font-bold text-rose-400';
-      } else if (simManip || m.distance_to_default_physical < 2.0 || simCCC) {
+      } else if (manipFlag || dd < 2.0 || cccAlert) {
+        tone = 'warn';
         badge.innerText = 'BB';
-        badge.className = 'text-xs font-mono font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30';
         title.innerText = 'UNDERWRITE STRICT COVENANTS / SICR WATCH';
         desc.innerText = 'Significant Increase in Credit Risk (SICR) or forensic anomalies detected. Impose negative pledge covenants & quarterly audit verification.';
-        banner.className = 'p-4 rounded-2xl glass-card border-l-4 border-l-amber-500 flex flex-col md:flex-row md:items-center justify-between gap-4';
         stage.innerText = 'Stage 2 (Lifetime ECL)';
-        stage.className = 'text-xs font-mono font-bold text-amber-400';
-        fTier.innerText = simManip ? 'High (Manipulation Flag)' : 'Medium (Elevated CCC)';
-        fTier.className = 'text-xs font-mono font-bold text-amber-400';
+        fTier.innerText = manipFlag ? 'High (Manipulation Flag)' : 'Medium (Elevated CCC)';
       } else {
-        badge.innerText = m.distance_to_default_physical > 4.0 ? 'AAA' : 'BBB';
-        badge.className = 'text-xs font-mono font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+        tone = 'good';
+        badge.innerText = dd > 4.0 ? 'AAA' : 'BBB';
         title.innerText = 'APPROVE / INVESTMENT GRADE MANDATE';
         desc.innerText = 'Robust solvency buffer with negligible refinancing friction; asset volatility inversion confirms strong enterprise liquidation coverage.';
-        banner.className = 'p-4 rounded-2xl glass-card border-l-4 border-l-emerald-500 flex flex-col md:flex-row md:items-center justify-between gap-4';
         stage.innerText = 'Stage 1 (12-Mo ECL)';
-        stage.className = 'text-xs font-mono font-bold text-emerald-400';
         fTier.innerText = 'Low / Clean Audit';
-        fTier.className = 'text-xs font-mono font-bold text-emerald-400';
       }
+      // The tone colours the rating tile, the IFRS 9 card (pill and timeline) and the forensics tier
+      setTone(banner, tone);
+      setTone(document.getElementById('stagingCard'), tone);
+      setTone(fTier, tone);
+      // With filed financials the tier is the forensic models' own composite (unless simulating)
+      if (filed && !simManip && !simCCC) {
+        if (financial) {
+          fTier.innerText = 'Not used for financials';
+          setTone(fTier, 'muted');
+        } else {
+          const tier = filed.composite_forensic_risk;
+          fTier.innerText = { Low: 'Low / Clean Audit', Medium: 'Medium Risk', High: 'High Risk', Critical: 'Critical Risk' }[tier] || `${tier} Risk`;
+          setTone(fTier, { Low: 'good', Medium: 'warn', High: 'bad', Critical: 'bad' }[tier] || 'warn');
+        }
+      }
+      setStage(STAGE_BY_TONE[tone]);
+      document.getElementById('directiveIcon').innerText = DIRECTIVE_ICONS[tone];
 
       // Update Charts
       updateMertonChart(m.distance_to_default_physical, m.default_probability_physical);
@@ -787,12 +2667,13 @@
       }, 70);
     }
 
+    // Back to the loaded borrower's filed values, or to the sample inputs when nothing is loaded
     function resetDefaults() {
-      document.getElementById('rngEquity').value = 200;
-      document.getElementById('rngEqVol').value = 35;
-      document.getElementById('rngSTD').value = 30;
-      document.getElementById('rngLTD').value = 100;
-      document.getElementById('rngRFR').value = 4.50;
+      if (loadedBorrower) {
+        applyLoadedInputs();
+      } else {
+        Object.entries(RANGE_DEFAULTS).forEach(([id, d]) => setSlider(id, d.min, d.max, d.value, d.step));
+      }
       document.getElementById('chkManipulator').checked = false;
       document.getElementById('chkCCCAlert').checked = false;
       handleParamChange();
@@ -825,19 +2706,9 @@
           maturity: 1.0,
           loss_given_default: 0.45
         },
-        forensic_input: {
-          sales_t: 1200.0, cogs_t: 750.0, receivables_t: 180.0, current_assets_t: 500.0,
-          ppe_t: 600.0, total_assets_t: 1200.0, depreciation_t: 60.0, sga_t: 180.0,
-          net_income_t: 90.0, cash_flow_operations_t: 110.0, current_liabilities_t: 250.0,
-          long_term_debt_t: 300.0, total_liabilities_t: 550.0, inventory_t: 180.0,
-          accounts_payable_t: 120.0, ebit_t: 160.0, retained_earnings_t: 350.0,
-          book_value_equity_t: 650.0,
-          sales_t_minus_1: 1100.0, cogs_t_minus_1: 690.0, receivables_t_minus_1: 160.0,
-          current_assets_t_minus_1: 460.0, ppe_t_minus_1: 580.0, total_assets_t_minus_1: 1120.0,
-          depreciation_t_minus_1: 55.0, sga_t_minus_1: 165.0, long_term_debt_t_minus_1: 280.0,
-          total_liabilities_t_minus_1: 510.0, inventory_t_minus_1: 165.0,
-          accounts_payable_t_minus_1: 110.0
-        },
+        // The borrower's filed annual reports once loaded, otherwise the sample statements
+        forensic_input: loadedBorrower && loadedBorrower.forensic_input ? loadedBorrower.forensic_input : SAMPLE_FORENSIC_INPUT,
+        forensics_applicable: !(loadedBorrower && loadedBorrower.forensics_applicable === false),
         loan_tenor_years: 5
       };
 
@@ -862,7 +2733,7 @@
         a.click();
         window.URL.revokeObjectURL(url);
       } catch (err) {
-        alert('Could not compile PDF memo. Verify backend is running.');
+        showSnackbar('Could not compile PDF memo. Verify backend is running.');
       } finally {
         btn.disabled = false;
         btnText.innerText = originalText;
@@ -878,14 +2749,33 @@
         }
       } catch (e) {
         document.getElementById('healthText').innerText = 'Engine: Local Mode';
+        setTone(document.getElementById('healthPill'), 'warn');
       }
     }
 
     // Initialize application
     window.addEventListener('DOMContentLoaded', () => {
       initCharts();
+      captureRangeDefaults();
+      initValueChips();
+      initCompanyCombos();
+      // Fetch the company list in the background so the dropdowns open instantly
+      setTimeout(() => loadCompanyDirectory().catch(() => {}), 1500);
+      syncBorrower();
+      document.querySelectorAll('.uh-range').forEach((range) => {
+        syncRangeFill(range);
+        range.addEventListener('input', () => syncRangeFill(range));
+      });
+      initSectionTabs();
       queryEngine();
       checkHealth();
+      // Redraw the canvases once Montserrat has loaded so chart text uses the theme font
+      if (document.fonts) {
+        document.fonts.ready.then(() => {
+          mertonChartInstance.update('none');
+          vasicekChartInstance.update('none');
+        });
+      }
     });
   </script>
 </body>
