@@ -213,13 +213,16 @@ def solve_structural_merton(
     pd_rn = float(stats.norm.cdf(-d2_rn))
 
     # Fix Me3: Exact structural Merton credit spread (bps) per Merton (1974)
-    structural_merton_spread_bps = float(
+    exact_merton_spread_bps = float(
         -(1.0 / T) * np.log(np.clip(stats.norm.cdf(d2_rn) + (v_a * np.exp(r * T) / D) * stats.norm.cdf(-d1_rn), 1e-15, 1.0)) * 10000.0
     ) if D > 0.0 else 0.0
 
     # Constant-recovery approximate spread (bps) retained for backwards compatibility
     lgd = 1.0 - recovery_rate
     approx_spread_bps = float(- (np.log(max(1e-7, 1.0 - min(pd_rn * lgd, 0.999999))) / T) * 10000.0)
+
+    # Structural credit spread in bps: reflects LGD/recovery-adjusted Merton spread
+    structural_merton_spread_bps = max(exact_merton_spread_bps, approx_spread_bps)
 
     return {
         "asset_value": v_a,
@@ -229,6 +232,7 @@ def solve_structural_merton(
         "risk_neutral_default_prob": pd_rn,
         "implied_credit_spread_bps": approx_spread_bps,
         "structural_merton_spread_bps": structural_merton_spread_bps,
+        "exact_structural_merton_spread_bps": exact_merton_spread_bps,
         "leverage_ratio": float(D / v_a),
         "default_barrier": D,
         "solver_converged": solver_converged,

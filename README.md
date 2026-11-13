@@ -2,7 +2,7 @@
 
 [![Live Web Terminal](https://img.shields.io/badge/Live%20Demo-Render-00c7b7?style=for-the-badge&logo=render&logoColor=white)](https://aegis-engine-s96v.onrender.com)
 [![OpenAPI Docs](https://img.shields.io/badge/API%20Docs-FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://aegis-engine-s96v.onrender.com/docs)
-[![Pytest Suite](https://img.shields.io/badge/Tests-57%20Passed-brightgreen?style=for-the-badge)](tests/test_engine.py)
+[![Pytest Suite](https://img.shields.io/badge/Tests-69%20Passed-brightgreen?style=for-the-badge)](tests/test_engine.py)
 
 > **Live Production Terminal:** [https://aegis-engine-s96v.onrender.com](https://aegis-engine-s96v.onrender.com)  
 > **Interactive Swagger API:** [https://aegis-engine-s96v.onrender.com/docs](https://aegis-engine-s96v.onrender.com/docs)
@@ -107,11 +107,13 @@ $$
 \text{PD}_{\text{conditional}}(Z) = \Phi\left( \frac{\Phi^{-1}(\text{PD}_{\text{PIT}}) + \sqrt{\rho} \cdot Z}{\sqrt{1 - \rho}} \right)
 $$
 
-   Where corporate asset correlation $\rho$ follows the Basel corporate specification:
+   Where corporate asset correlation $\rho$ follows the Basel corporate and SME specification:
 
 $$
-\rho = 0.12 \left(\frac{1 - e^{-50 \cdot \text{PD}}}{1 - e^{-50}}\right) + 0.24 \left(1 - \frac{1 - e^{-50 \cdot \text{PD}}}{1 - e^{-50}}\right), \quad \rho \in [0.12, 0.24]
+\rho = 0.12 \left(\frac{1 - e^{-50 \cdot \text{PD}}}{1 - e^{-50}}\right) + 0.24 \left(1 - \frac{1 - e^{-50 \cdot \text{PD}}}{1 - e^{-50}}\right) - 0.04 \left(1 - \frac{\min(\max(S, 5), 50) - 5}{45}\right)
 $$
+
+   With correlation bounded by $\rho \in [0.08, 0.24]$ when SME turnover adjustment is applied ($S \le 50\text{M EUR}$), and $\rho \in [0.12, 0.24]$ for standard corporate exposures.
 
 2. **Multi-Period Lifetime Expected Credit Loss (ECL):**
 
@@ -148,7 +150,7 @@ aegis_engine/
 ├── tests/
 │   ├── __init__.py
 │   ├── conftest.py           # Pytest root configuration
-│   └── test_engine.py        # 57 deterministic unit, numerical & integration tests
+│   └── test_engine.py        # 69 deterministic unit, numerical & integration tests
 ├── Dockerfile                # Multi-stage production container build (python:3.11-slim)
 ├── requirements.txt          # Frozen production dependencies
 └── Makefile                  # Unified developer CLI: test, lint, run, docker-build
@@ -168,7 +170,7 @@ The API is fully documented with interactive Swagger/OpenAPI UI at `/docs`:
 | `POST` | `/api/v1/forensics/analyze` | Beneish 8-Factor, Altman $Z''$, and CCC working capital analysis |
 | `POST` | `/api/v1/regulatory/vasicek` | Basel ASRF conditional distribution & regulatory capital ($K$) |
 | `POST` | `/api/v1/regulatory/ecl` | Evaluates IFRS 9 3-stage transitions and computes multi-period ECL |
-| `POST` | `/api/v1/credit/comprehensive` | Unified institutional assessment with rating and committee directive |
+| `POST` | `/api/v1/credit/comprehensive` | Unified institutional assessment with internal risk band and indicative stance |
 | `POST` | `/api/v1/credit/export-memo` | Compiles & streams binary PDF institutional Credit Risk Memorandum |
 
 ---
@@ -184,7 +186,7 @@ cd aegis-engine
 # Install dependencies
 pip install -r requirements.txt
 
-# Run the test suite (57 tests)
+# Run the test suite (69 tests)
 python -m pytest tests/test_engine.py -v
 
 # Launch the FastAPI server + Web Terminal
@@ -206,8 +208,20 @@ Open `http://localhost:8000` to interact with the Live Terminal.
 
 ## 6. Empirical Case Studies
 
-### Silicon Valley Bank (SIVB) Distress Backtest
+### A. Silicon Valley Bank (SIVB) Distress Backtest (Q4 2022 Pre-Insolvency)
 
-> Under review: Beneish result and related figures are being recomputed after a coefficient correction. Do not rely on the M-score reported here.
+- **Structural Merton Inversion:** $V_A = \$101{,}836.5\text{M}$, $\sigma_A = 9.69\%$, $\text{DD} = 1.41\sigma$, $\text{PD}_{\text{physical}} = 7.95\%$, Fair Credit Spread $= 557.0\text{ bps}$.
+- **Balance Sheet Forensics:** Raw Beneish $M = -2.08$ (below $-1.78$ threshold), Altman $Z'' = 0.23$ (Deep Distress Zone), Asset Quality Index $\text{AQI} = 1.58$.
+- **Financial Institution Guardrail:** When flagged with `is_financial_institution=True`, non-applicable non-financial forensic flags are suppressed with domain warning: *"These models were built for non-financial firms."*
+- **Regulatory Staging & ECL:** Stage 3 (Credit Impaired), Lifetime ECL allowance of $\$61{,}321\text{M}$ ($61.32\%$ of $\$100{,}000\text{M}$ EAD).
+- **Mandate Verdict:** **Band 7 (Impaired / Default Risk)** — Indicative Stance: Immediate Workout.
+- **Filing Timing & Sensitivity:** Reflects FY2022 10-K / Q3 2022 10-Q pre-run financial statements (~70 days prior to March 10, 2023 receivership). Stress testing under rapid deposit run debt barriers ($D \in [\$75\text{B}, \$95\text{B}]$) demonstrates catastrophic solvency collapse.
+- **Full Case Study:** Refer to [`docs/case_studies/SVB_Q4_2022_distress_backtest.md`](docs/case_studies/SVB_Q4_2022_distress_backtest.md).
 
-Refer to [`docs/case_studies/SVB_Q4_2022_distress_backtest.md`](docs/case_studies/SVB_Q4_2022_distress_backtest.md) for the detailed historical pre-insolvency audit.
+### B. Microsoft Corporation (MSFT) Sovereign-Equivalent Benchmark
+
+- **Structural Merton Inversion:** $V_A = \$2{,}425{,}047.1\text{M}$, $\sigma_A = 22.27\%$, $\text{DD} = 20.58\sigma$, $\text{PD}_{\text{physical}} < 0.0001\%$, Fair Credit Spread $= 0.0\text{ bps}$.
+- **Balance Sheet Forensics:** Beneish $M = -2.51$ (Clean, well below $-1.78$ threshold), Altman $Z'' = 4.70$ (Safe Zone $> 2.60$).
+- **Regulatory Staging & ECL:** Stage 1 (Performing — 12-Month ECL), 12-Month ECL allowance of $\$0.02$ ($0.0000\%$ of $\$100{,}000\text{M}$ EAD).
+- **Mandate Verdict:** **Band 1 (Minimal Credit Risk)** — Indicative Stance: Prime Solvency.
+- **Full Case Study:** Refer to [`docs/case_studies/MSFT_fortress_benchmark.md`](docs/case_studies/MSFT_fortress_benchmark.md).
