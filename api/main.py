@@ -52,6 +52,7 @@ try:
     from aegis_engine.services.memo_generator import (
         generate_credit_memo_pdf,
         generate_credit_memo_html,
+        format_currency,
     )
     from aegis_engine.services.market_data import MarketDataError, company_directory, load_borrower
 except ModuleNotFoundError:
@@ -79,6 +80,7 @@ except ModuleNotFoundError:
     from services.memo_generator import (
         generate_credit_memo_pdf,
         generate_credit_memo_html,
+        format_currency,
     )
     from services.market_data import MarketDataError, company_directory, load_borrower
 
@@ -384,7 +386,7 @@ def _compute_internal_risk_band_and_stance(
             else "forensic scores not applied (models built for non-financial firms). "
         )
         + f"IFRS 9 Staging: {ecl_res.stage_name} "
-        f"with ECL allowance of ${ecl_res.total_ecl:,.2f} ({ecl_res.ecl_percentage_of_ead:.2f}% EAD)."
+        f"with ECL allowance of {format_currency(ecl_res.total_ecl)} ({ecl_res.ecl_percentage_of_ead:.2f}% EAD)."
         + reconciliation_note
     )
 
@@ -499,7 +501,7 @@ async def comprehensive_assessment_endpoint(req: ComprehensiveCreditRequest) -> 
                 sga_t=max(sales * 0.15, 5.0),
                 net_income_t=ebit * 0.7,
                 cash_flow_operations_t=cfo_curr,
-                current_liabilities_t=max(tl * 0.4, 5.0),
+                current_liabilities_t=min(max(tl * 0.4, 1.0), tl),
                 long_term_debt_t=max(tl * 0.6, 0.0),
                 total_liabilities_t=tl,
                 inventory_t=inv,
@@ -540,6 +542,13 @@ async def comprehensive_assessment_endpoint(req: ComprehensiveCreditRequest) -> 
                 forensics_res.summary_findings.append(finding)
         if req.simulate_working_capital_stress:
             finding = "Scenario Stress Override: Simulated working capital stress active (ΔCCC > +25d)."
+            if finding not in forensics_res.summary_findings:
+                forensics_res.summary_findings.append(finding)
+        if forensics_res.is_financial_institution:
+            finding = (
+                "Financial-sector borrower: Beneish, Altman Z'' and cash-cycle scores are calibrated on non-financial "
+                "companies and were excluded from the risk band."
+            )
             if finding not in forensics_res.summary_findings:
                 forensics_res.summary_findings.append(finding)
 

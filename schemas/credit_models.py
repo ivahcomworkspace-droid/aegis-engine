@@ -155,19 +155,37 @@ class ForensicInput(BaseModel):
     inventory_t_minus_1: float = Field(..., ge=0, description="Total Inventory in period t-1")
     accounts_payable_t_minus_1: float = Field(..., ge=0, description="Accounts Payable in period t-1")
     securities_t_minus_1: float = Field(default=0.0, ge=0, description="Marketable securities in period t-1")
+    current_liabilities_t_minus_1: Optional[float] = Field(default=None, ge=0, description="Current Liabilities in period t-1")
 
     @model_validator(mode='after')
     def validate_balance_sheet_identities(self) -> 'ForensicInput':
         if self.working_capital_t is None:
             self.working_capital_t = self.current_assets_t - self.current_liabilities_t
 
-        if self.current_assets_t > self.total_assets_t * 1.05:
+        # 1. Validation check ensuring current_liabilities <= total_liabilities
+        if self.current_liabilities_t > self.total_liabilities_t:
             raise ValueError(
-                f"Current assets ({self.current_assets_t}) exceeds total assets ({self.total_assets_t})"
+                f"Accounting Identity Failure: Current liabilities ({self.current_liabilities_t}) "
+                f"exceeds total liabilities ({self.total_liabilities_t})."
             )
-        if self.current_assets_t_minus_1 > self.total_assets_t_minus_1 * 1.05:
+        if hasattr(self, "total_liabilities_t_minus_1") and self.total_liabilities_t_minus_1 is not None:
+            if hasattr(self, "current_liabilities_t_minus_1") and self.current_liabilities_t_minus_1 is not None:
+                if self.current_liabilities_t_minus_1 > self.total_liabilities_t_minus_1:
+                    raise ValueError(
+                        f"Accounting Identity Failure: Prior period current liabilities ({self.current_liabilities_t_minus_1}) "
+                        f"exceeds prior total liabilities ({self.total_liabilities_t_minus_1})."
+                    )
+
+        # 2. Validation check ensuring current_assets <= total_assets
+        if self.current_assets_t > self.total_assets_t:
             raise ValueError(
-                f"Prior period current assets ({self.current_assets_t_minus_1}) exceeds total assets ({self.total_assets_t_minus_1})"
+                f"Accounting Identity Failure: Current assets ({self.current_assets_t}) "
+                f"exceeds total assets ({self.total_assets_t})."
+            )
+        if self.current_assets_t_minus_1 > self.total_assets_t_minus_1:
+            raise ValueError(
+                f"Accounting Identity Failure: Prior period current assets ({self.current_assets_t_minus_1}) "
+                f"exceeds prior total assets ({self.total_assets_t_minus_1})."
             )
 
         # Fix S2: Balance sheet accounting identity validator (tolerance <= 0.01 * Assets)

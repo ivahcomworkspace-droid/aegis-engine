@@ -1800,15 +1800,29 @@
       return String(value || '').trim().toUpperCase().replace(/[./]/g, '-');
     }
 
-    // $ millions as a short label: $3.96T, $31.1B, $80.0M, $45.2K
+    // $ millions as a short label: $3.96T, $31.1B, $80.0M, $45.2k, $5.5k
     function formatMoneyM(valueM) {
       const v = Number(valueM) || 0;
       const abs = Math.abs(v);
       if (abs >= 1e6) return `$${(v / 1e6).toFixed(2)}T`;
       if (abs >= 1e3) return `$${(v / 1e3).toFixed(abs >= 1e5 ? 0 : abs >= 1e4 ? 1 : 2)}B`;
       if (abs >= 1) return `$${v.toFixed(1)}M`;
-      if (abs >= 1e-3) return `$${(v * 1e3).toFixed(1)}K`;
-      return `$${Math.round(v * 1e6).toLocaleString('en-US')}`;
+      if (abs >= 1e-3) return `$${(v * 1e3).toFixed(1)}k`;
+      if (abs > 0) return `$${Math.round(v * 1e6).toLocaleString('en-US')}`;
+      return '$0';
+    }
+
+    function formatCurrency(val, isMillions = false) {
+      const v = Number(val) || 0;
+      const abs = Math.abs(v);
+      if (abs === 0) return '$0';
+      if (isMillions || (abs > 0 && abs < 1.0)) {
+        return formatMoneyM(v);
+      }
+      if (abs >= 1e9) return `$${(v / 1e9).toFixed(2)}B`;
+      if (abs >= 1e6) return `$${(v / 1e6).toFixed(2)}M`;
+      if (abs >= 1e3) return `$${(v / 1e3).toFixed(1)}k`;
+      return `$${v.toFixed(2)}`;
     }
 
     // Typed money in $ millions: "4.2B", "$31,090", "950M", "2T", "120K"
@@ -2619,6 +2633,64 @@
       return sgn * Math.sqrt(Math.sqrt(inner) - term1);
     }
 
+    function buildActivePayload(E, eqVol, std, ltd, r, simManip, simCCC) {
+      const ticker = document.getElementById('inpTicker').value.trim() || 'APEX';
+      const company = document.getElementById('inpCompany').value.trim() || 'Apex Industrial Corp';
+
+      let baseForensics = loadedBorrower && loadedBorrower.forensic_input 
+        ? JSON.parse(JSON.stringify(loadedBorrower.forensic_input))
+        : JSON.parse(JSON.stringify(SAMPLE_FORENSIC_INPUT));
+
+      // Synchronize debt & balance sheet in sample baseline ensuring total_liabilities is strictly >= current_liabilities
+      if (!loadedBorrower || !loadedBorrower.forensic_input) {
+        const opCurrentLiab = Math.max(baseForensics.accounts_payable_t || 120.0, 50.0);
+        baseForensics.current_liabilities_t = std + opCurrentLiab;
+        baseForensics.long_term_debt_t = ltd;
+        baseForensics.total_liabilities_t = baseForensics.current_liabilities_t + ltd;
+        baseForensics.book_value_equity_t = Math.max(E, 200.0);
+        baseForensics.total_assets_t = baseForensics.total_liabilities_t + baseForensics.book_value_equity_t;
+        baseForensics.current_assets_t = Math.min(Math.max(baseForensics.current_liabilities_t * 1.5, 300.0), baseForensics.total_assets_t * 0.7);
+        baseForensics.ppe_t = baseForensics.total_assets_t - baseForensics.current_assets_t;
+      }
+
+      // Serialize active forensic simulation overrides
+      if (simManip) {
+        baseForensics.sales_t_minus_1 = baseForensics.sales_t * 0.70;
+        baseForensics.receivables_t_minus_1 = baseForensics.receivables_t * 0.30;
+        baseForensics.cogs_t_minus_1 = baseForensics.cogs_t * 0.50;
+        baseForensics.cash_flow_operations_t = (baseForensics.ebit_t || 160.0) * 0.10;
+      }
+      if (simCCC) {
+        baseForensics.receivables_t_minus_1 = baseForensics.receivables_t * 0.50;
+        baseForensics.inventory_t_minus_1 = baseForensics.inventory_t * 0.50;
+      }
+
+      return {
+        company_name: company,
+        ticker: ticker,
+        equity_market_cap: E,
+        equity_volatility: eqVol,
+        short_term_debt: std,
+        long_term_debt: ltd,
+        risk_free_rate: r,
+        simulate_beneish_manipulation: simManip,
+        simulate_working_capital_stress: simCCC,
+        merton_input: {
+          equity_value: E,
+          equity_volatility: eqVol,
+          short_term_debt: std,
+          long_term_debt: ltd,
+          risk_free_rate: r,
+          maturity: 1.0,
+          loss_given_default: 0.45
+        },
+        forensic_input: baseForensics,
+        is_financial_institution: Boolean(loadedBorrower && loadedBorrower.forensics_applicable === false),
+        loan_exposure: Math.max(std + ltd, 100.0),
+        loan_tenor_years: 5
+      };
+    }
+
     async function queryEngine() {
       if (activeAbortController) {
         activeAbortController.abort();
@@ -2640,18 +2712,10 @@
       const barrier = std + 0.5 * ltd;
       document.getElementById('dispBarrier').innerText = formatMoneyM(barrier);
 
-      const payload = {
-        equity_value: E,
-        equity_volatility: eqVol,
-        short_term_debt: std,
-        long_term_debt: ltd,
-        risk_free_rate: r,
-        maturity: 1.0,
-        loss_given_default: 0.45
-      };
+      const payload = buildActivePayload(E, eqVol, std, ltd, r, simManip, simCCC);
 
       try {
-        const response = await fetch('/api/v1/merton/solve', {
+        const response = await fetch('/api/v1/credit/comprehensive', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -2660,9 +2724,9 @@
 
         if (response.ok) {
           const res = await response.json();
-          renderResults(res, simManip, simCCC);
+          window.activeEngineAssessment = res;
+          renderResults(res);
         } else {
-          // Fallback to client-side analytical approximation if disconnected
           renderFallback(payload, simManip, simCCC);
         }
       } catch (err) {
@@ -2679,7 +2743,13 @@
       return `${pct.toExponential(2)}%`;
     }
 
-    function renderResults(m, simManip, simCCC) {
+    function renderResults(res) {
+      const m = res.merton;
+      const f = res.forensics;
+      const ecl = res.ifrs9_ecl;
+      const v = res.regulatory_capital || res.vasicek;
+      const isBank = Boolean(f && f.is_financial_institution);
+
       document.getElementById('kpiDD').innerText = `${m.distance_to_default_physical.toFixed(2)}σ`;
       document.getElementById('kpiPD').innerText = `PD: ${formatPD(m.default_probability_physical)}`;
       document.getElementById('kpiPD').title = `Precise PD: ${(m.default_probability_physical * 100).toExponential(4)}% under standard normal Φ(-DD)`;
@@ -2688,81 +2758,61 @@
       document.getElementById('kpiSpread').innerText = `${m.credit_spread_bps.toFixed(1)} bps`;
 
       // ECL estimation
-      const totalDebt = m.default_barrier * 1.25;
-      const baseECL = m.default_probability_physical * 0.45 * totalDebt;
-      const multiPeriodECL = simManip || m.distance_to_default_physical < 2.0 ? baseECL * 3.8 : baseECL * 1.1;
-      document.getElementById('kpiECL').innerText = formatMoneyM(multiPeriodECL);
-      document.getElementById('kpiECLPct').innerText = `${((multiPeriodECL / (totalDebt + 1e-6)) * 100).toFixed(2)}% EAD`;
+      document.getElementById('kpiECL').innerText = formatCurrency(ecl.total_ecl);
+      document.getElementById('kpiECLPct').innerText = `${ecl.ecl_percentage_of_ead.toFixed(2)}% EAD`;
 
-      // Forensics: the borrower's filed annual reports once a ticker is loaded, otherwise the sample
-      // scenario. The two "Simulate" switches override either with a stressed case. Beneish, Altman
-      // and the cash cycle are calibrated on non-financial companies, so they don't count for banks.
-      const dd = m.distance_to_default_physical;
-      const filed = loadedBorrower && loadedBorrower.forensic_analysis ? loadedBorrower.forensic_analysis : null;
-      const financial = Boolean(loadedBorrower && loadedBorrower.forensics_applicable === false);
-      const scoresApply = !financial || simManip;
-      const cccApplies = !financial || simCCC;
-
-      const mScore = simManip ? -1.45 : (filed ? filed.beneish.m_score : -2.62);
-      const zScore = simManip ? 0.95 : (filed ? filed.altman.z_double_prime : (dd < 1.2 ? 0.95 : (dd < 2.5 ? 1.85 : 3.42)));
-      const manipFlag = scoresApply && mScore > -1.78;
-
-      document.getElementById('beneishScore').innerText = mScore.toFixed(2);
-      const bPill = document.getElementById('beneishPill');
-      if (!scoresApply) {
-        bPill.innerText = 'NOT USED FOR FINANCIALS';
-        setSignal(bPill, 'muted');
-      } else if (manipFlag) {
-        bPill.innerText = 'MANIPULATION WARNING';
-        setSignal(bPill, 'bad');
-      } else {
-        bPill.innerText = 'CLEAN';
-        setSignal(bPill, 'good');
+      // Forensics scorecard display
+      if (f && f.beneish) {
+        document.getElementById('beneishScore').innerText = f.beneish.m_score.toFixed(2);
+        const bPill = document.getElementById('beneishPill');
+        if (isBank) {
+          bPill.innerText = 'NOT USED FOR FINANCIALS';
+          setSignal(bPill, 'muted');
+        } else if (f.beneish.is_manipulator) {
+          bPill.innerText = 'MANIPULATION WARNING';
+          setSignal(bPill, 'bad');
+        } else {
+          bPill.innerText = 'CLEAN';
+          setSignal(bPill, 'good');
+        }
       }
 
-      document.getElementById('altmanScore').innerText = zScore.toFixed(2);
-      const zPill = document.getElementById('altmanPill');
-      if (!scoresApply) {
-        zPill.innerText = 'NOT USED FOR FINANCIALS';
-        setSignal(zPill, 'muted');
-      } else if (zScore > 2.60) {
-        zPill.innerText = 'SAFE ZONE';
-        setSignal(zPill, 'good');
-      } else if (zScore >= 1.10) {
-        zPill.innerText = 'GREY ZONE';
-        setSignal(zPill, 'warn');
-      } else {
-        zPill.innerText = 'DISTRESS';
-        setSignal(zPill, 'bad');
+      if (f && f.altman) {
+        document.getElementById('altmanScore').innerText = f.altman.z_double_prime.toFixed(2);
+        const zPill = document.getElementById('altmanPill');
+        if (isBank) {
+          zPill.innerText = 'NOT USED FOR FINANCIALS';
+          setSignal(zPill, 'muted');
+        } else if (f.altman.zone === 'Safe') {
+          zPill.innerText = 'SAFE ZONE';
+          setSignal(zPill, 'good');
+        } else if (f.altman.zone === 'Grey') {
+          zPill.innerText = 'GREY ZONE';
+          setSignal(zPill, 'warn');
+        } else {
+          zPill.innerText = 'DISTRESS';
+          setSignal(zPill, 'bad');
+        }
       }
 
-      let cccValue = 54.2;
-      let cccDays = '+2.1 days';
-      let cccAlert = false;
-      if (simCCC) {
-        cccValue = 78.5;
-        cccDays = '+26.4 days';
-        cccAlert = true;
-      } else if (filed) {
-        cccValue = filed.ccc.ccc_t;
-        cccDays = `${filed.ccc.delta_ccc >= 0 ? '+' : ''}${filed.ccc.delta_ccc.toFixed(1)} days`;
-        cccAlert = cccApplies && filed.ccc.warning_triggered;
+      if (f && f.ccc) {
+        const cccAlert = Boolean(f.ccc.warning_triggered);
+        const cccTone = isBank ? 'muted' : (cccAlert ? 'bad' : 'good');
+        document.getElementById('cccScore').innerHTML = `${f.ccc.ccc_t.toFixed(1)} days <span class="uh-tone-text is-${cccTone} text-sm">(Δ ${f.ccc.delta_ccc >= 0 ? '+' : ''}${f.ccc.delta_ccc.toFixed(1)} days)</span>`;
+        const cPill = document.getElementById('cccPill');
+        cPill.innerText = isBank ? 'NOT USED FOR FINANCIALS' : (cccAlert ? 'STRESS ALERT' : 'OPTIMAL');
+        setSignal(cPill, cccTone);
       }
-      const cccTone = !cccApplies ? 'muted' : (cccAlert ? 'bad' : 'good');
-      document.getElementById('cccScore').innerHTML = `${cccValue.toFixed(1)} days <span class="uh-tone-text is-${cccTone} text-sm">(Δ ${cccDays})</span>`;
-      const cPill = document.getElementById('cccPill');
-      cPill.innerText = !cccApplies ? 'NOT USED FOR FINANCIALS' : (cccAlert ? 'STRESS ALERT' : 'OPTIMAL');
-      setSignal(cPill, cccTone);
 
       const basis = document.getElementById('forensicBasis');
-      if (filed) {
+      if (loadedBorrower && loadedBorrower.fiscal_year_end) {
         const years = `FY${loadedBorrower.fiscal_year_end.slice(0, 4)} vs FY${loadedBorrower.prior_fiscal_year_end.slice(0, 4)}`;
-        basis.innerText = `Filed financials · ${years}${financial ? ' · not used for financial companies' : ''}`;
+        basis.innerText = `Filed financials · ${years}${isBank ? ' · not used for financial companies' : ''}`;
       } else {
         basis.innerText = loadedBorrower ? 'Sample financials · the filings lack some figures' : 'Sample financials · load a ticker to use filed figures';
       }
 
-      // Directive & Rating
+      // Directive & Rating: bound directly to core engine assessment
       const banner = document.getElementById('underwritingBanner');
       const badge = document.getElementById('internalRiskBandBadge');
       const title = document.getElementById('directiveTitle');
@@ -2770,94 +2820,90 @@
       const stage = document.getElementById('stageBadge');
       const fTier = document.getElementById('forensicTierBadge');
 
-      const isForensicsClean = !manipFlag && (zScore >= 1.80 || !scoresApply);
+      const bandText = res.internal_risk_band || res.credit_rating || 'Band 4 (Acceptable / Monitored)';
+      badge.innerText = bandText;
+      title.innerText = res.indicative_stance || res.recommendation || 'INDICATIVE: ACCEPTABLE RISK / MONITOR';
+      desc.innerText = res.executive_summary || '';
+      stage.innerText = ecl.stage_name || `Stage ${ecl.assigned_stage}`;
 
       let tone;
-      if (dd < 1.0 || (scoresApply && zScore < 1.10)) {
+      if (bandText.includes('Band 7') || bandText.includes('Band 6')) {
         tone = 'bad';
-        badge.innerText = 'Band 7 (Very High)';
-        title.innerText = 'INDICATIVE: VERY HIGH RISK — WORKOUT REVIEW';
-        if (isForensicsClean) {
-          desc.innerText = `Severe structural default hazard: market equity collapse or leverage compresses assets toward debt barrier (DD ${dd.toFixed(2)}σ). Forensic accounting remains clean (M-Score ${mScore.toFixed(2)}), confirming distress is driven by market insolvency rather than financial reporting fraud.`;
-        } else {
-          desc.innerText = 'Severe default hazard; latent assets approach debt barrier with critically impaired equity cushion and forensic distress signals.';
-        }
-        stage.innerText = 'Stage 3 (Credit Impaired)';
-        fTier.innerText = 'Critical Risk';
-      } else if (manipFlag || dd < 2.0 || cccAlert) {
+      } else if (bandText.includes('Band 5')) {
         tone = 'warn';
-        badge.innerText = dd < 1.5 ? 'Band 6 (High)' : 'Band 5 (Elevated)';
-        title.innerText = 'INDICATIVE: ELEVATED RISK — ENHANCED MONITORING';
-        desc.innerText = 'Significant Increase in Credit Risk (SICR) or forensic anomalies detected. Impose negative pledge covenants & quarterly audit verification.';
-        stage.innerText = 'Stage 2 (Lifetime ECL)';
-        fTier.innerText = manipFlag ? 'High (Manipulation Flag)' : 'Medium (Elevated CCC)';
       } else {
         tone = 'good';
-        badge.innerText = dd > 4.0 ? 'Band 1 (Minimal)' : 'Band 3 (Moderate)';
-        title.innerText = 'INDICATIVE: MINIMAL RISK — SUPERIOR CAPACITY';
-        desc.innerText = 'Robust solvency buffer with negligible refinancing friction; asset volatility inversion confirms strong enterprise liquidation coverage.';
-        stage.innerText = 'Stage 1 (12-Mo ECL)';
-        fTier.innerText = 'Low / Clean Audit';
       }
-      // The tone colours the rating tile, the IFRS 9 card (pill and timeline) and the forensics tier
+
       setTone(banner, tone);
       setTone(document.getElementById('stagingCard'), tone);
-      setTone(fTier, tone);
-      // With filed financials the tier is the forensic models' own composite (unless simulating)
-      if (filed && !simManip && !simCCC) {
-        if (financial) {
-          fTier.innerText = 'Not used for financials';
-          setTone(fTier, 'muted');
-        } else {
-          const tier = filed.composite_forensic_risk;
-          fTier.innerText = { Low: 'Low / Clean Audit', Medium: 'Medium Risk', High: 'High Risk', Critical: 'Critical Risk' }[tier] || `${tier} Risk`;
-          setTone(fTier, { Low: 'good', Medium: 'warn', High: 'bad', Critical: 'bad' }[tier] || 'warn');
-        }
+      setStage(STAGE_BY_TONE[tone]);
+      document.getElementById('directiveIcon').innerText = DIRECTIVE_ICONS[tone];
+
+      // Forensic Tier Badge
+      if (isBank) {
+        fTier.innerText = 'Not used for financials';
+        setTone(fTier, 'muted');
+      } else if (f && f.composite_forensic_risk) {
+        const tier = f.composite_forensic_risk;
+        fTier.innerText = { Low: 'Low / Clean Audit', Medium: 'Medium Risk', High: 'High Risk', Critical: 'Critical Risk' }[tier] || (tier + ' Risk');
+        setTone(fTier, { Low: 'good', Medium: 'warn', High: 'bad', Critical: 'bad' }[tier] || 'warn');
       }
 
       // Risk Driver Reconciliation Callout
       const reconNote = document.getElementById('riskReconciliationNote');
       const reconText = document.getElementById('riskReconciliationText');
       if (reconNote && reconText) {
-        if (tone === 'bad' && isForensicsClean) {
+        if (res.executive_summary && res.executive_summary.includes('Risk Reconciliation:')) {
           reconNote.classList.remove('hidden');
-          reconText.innerHTML = `<strong>Why Stage 3 / Band 7 despite clean forensics?</strong> This company faces real-time structural credit distress (Distance-to-Default <strong>${dd.toFixed(2)}σ</strong>, high debt-to-equity leverage, or elevated asset volatility) pushing latent enterprise assets near the default barrier. Meanwhile, historical accounting statements are clean (Beneish M-Score of <strong>${mScore.toFixed(2)}</strong> indicates no earnings manipulation). Forensic accounting tests audit integrity; structural Merton models evaluate economic solvency.`;
-        } else if (manipFlag && dd > 3.0) {
-          reconNote.classList.remove('hidden');
-          reconText.innerHTML = `<strong>Why Elevated Risk despite strong equity buffer?</strong> Although market Distance-to-Default is <strong>${dd.toFixed(2)}σ</strong>, the Beneish model detected potential earnings manipulation (M-Score <strong>${mScore.toFixed(2)} &gt; -1.78</strong>). Creditors must apply enhanced surveillance as reported financial buffers may be overstated.`;
+          const notePart = res.executive_summary.split('Risk Reconciliation:')[1] || '';
+          reconText.innerHTML = `<strong>Why Stage 3 / Band 7 despite clean forensics?</strong>${notePart}`;
         } else {
           reconNote.classList.add('hidden');
           reconText.innerText = '';
         }
       }
 
-      setStage(STAGE_BY_TONE[tone]);
-      document.getElementById('directiveIcon').innerText = DIRECTIVE_ICONS[tone];
-
       // Update Charts
       updateMertonChart(m.distance_to_default_physical, m.default_probability_physical);
-      // Corporate asset correlation approx: rho ~ 0.12*(1-exp(-50*PD)) + 0.24*(exp(-50*PD))
-      const factor = (1 - Math.exp(-50 * m.default_probability_physical));
-      const rho = 0.12 * factor + 0.24 * (1 - factor);
+      const rho = (v && v.asset_correlation_rho) ? v.asset_correlation_rho : 0.18;
       updateVasicekChart(m.default_probability_physical, rho);
     }
 
     function renderFallback(p, simManip, simCCC) {
       const D = p.short_term_debt + 0.5 * p.long_term_debt;
-      const VA = p.equity_value + D * Math.exp(-p.risk_free_rate);
-      const sigmaA = p.equity_volatility * (p.equity_value / VA);
+      const VA = p.equity_market_cap + D * Math.exp(-p.risk_free_rate);
+      const sigmaA = p.equity_volatility * (p.equity_market_cap / VA);
       const dd = (Math.log(VA / (D || 1)) + (p.risk_free_rate - 0.5 * sigmaA * sigmaA)) / (sigmaA || 0.1);
       const pd = normalCDF(-dd);
-      const spread = -Math.log(1 - pd * 0.45) * 10000;
+      const spread = -Math.log(Math.max(1 - pd * 0.45, 1e-6)) * 10000;
 
-      renderResults({
-        asset_value: VA,
-        asset_volatility: sigmaA,
-        default_barrier: D,
-        distance_to_default_physical: Math.max(dd, 0.05),
-        default_probability_physical: pd,
-        credit_spread_bps: Math.min(Math.max(spread, 1.0), 5000)
-      }, simManip, simCCC);
+      const fallbackRes = {
+        merton: {
+          asset_value: VA,
+          asset_volatility: sigmaA,
+          default_barrier: D,
+          distance_to_default_physical: Math.max(dd, 0.05),
+          default_probability_physical: pd,
+          credit_spread_bps: Math.min(Math.max(spread, 1.0), 5000)
+        },
+        forensics: {
+          beneish: { m_score: simManip ? -1.45 : -2.62, is_manipulator: simManip },
+          altman: { z_double_prime: simManip ? 0.95 : (dd < 1.2 ? 0.95 : (dd < 2.5 ? 1.85 : 3.42)), zone: (simManip || dd < 1.2) ? 'Distress' : (dd < 2.5 ? 'Grey' : 'Safe') },
+          ccc: { ccc_t: simCCC ? 78.5 : 54.2, delta_ccc: simCCC ? 26.4 : 2.1, warning_triggered: simCCC },
+          composite_forensic_risk: simManip ? 'High Risk' : (simCCC ? 'Medium Risk' : 'Low / Clean Audit')
+        },
+        ifrs9_ecl: {
+          assigned_stage: dd < 1.0 ? 3 : (dd < 2.0 ? 2 : 1),
+          stage_name: dd < 1.0 ? 'Stage 3 (Credit Impaired)' : (dd < 2.0 ? 'Stage 2 (Lifetime ECL)' : 'Stage 1 (12-Mo ECL)'),
+          total_ecl: pd * 0.45 * (D * 1.25),
+          ecl_percentage_of_ead: pd * 45.0
+        },
+        internal_risk_band: dd < 1.0 ? 'Band 7 (Impaired / Default Risk)' : (dd < 1.5 ? 'Band 6 (High Risk / Substandard)' : (dd < 2.0 ? 'Band 5 (Special Mention / Elevated)' : (dd < 3.2 ? 'Band 4 (Acceptable / Monitored)' : 'Band 1 (Minimal Credit Risk)'))),
+        indicative_stance: dd < 1.0 ? 'INDICATIVE: VERY HIGH RISK — WORKOUT REVIEW' : (dd < 2.0 ? 'INDICATIVE: ELEVATED RISK — ENHANCED MONITORING' : 'INDICATIVE: MINIMAL RISK — SUPERIOR CAPACITY'),
+        executive_summary: `Physical Distance-to-Default of ${dd.toFixed(2)}σ.`
+      };
+      renderResults(fallbackRes);
     }
 
     function handleParamChange() {
@@ -2897,58 +2943,10 @@
       const ltd = parseFloat(document.getElementById('rngLTD').value);
       const r = parseFloat(document.getElementById('rngRFR').value) / 100.0;
       const ticker = document.getElementById('inpTicker').value.trim() || 'APEX';
-      const company = document.getElementById('inpCompany').value.trim() || 'Apex Industrial Corp';
       const simManip = document.getElementById('chkManipulator').checked;
       const simCCC = document.getElementById('chkCCCAlert').checked;
 
-      // Active base forensic input (filed reports when loaded, otherwise sample baseline)
-      let baseForensics = loadedBorrower && loadedBorrower.forensic_input 
-        ? JSON.parse(JSON.stringify(loadedBorrower.forensic_input))
-        : JSON.parse(JSON.stringify(SAMPLE_FORENSIC_INPUT));
-
-      // Synchronize debt & balance sheet in sample baseline with active slider values
-      if (!loadedBorrower || !loadedBorrower.forensic_input) {
-        baseForensics.long_term_debt_t = ltd;
-        baseForensics.total_liabilities_t = std + ltd;
-        baseForensics.total_assets_t = (std + ltd) + baseForensics.book_value_equity_t;
-      }
-
-      // Serialize active forensic simulation overrides
-      if (simManip) {
-        baseForensics.sales_t_minus_1 = baseForensics.sales_t * 0.70;
-        baseForensics.receivables_t_minus_1 = baseForensics.receivables_t * 0.30;
-        baseForensics.cogs_t_minus_1 = baseForensics.cogs_t * 0.50;
-        baseForensics.cash_flow_operations_t = (baseForensics.ebit_t || 160.0) * 0.10;
-      }
-      if (simCCC) {
-        baseForensics.receivables_t_minus_1 = baseForensics.receivables_t * 0.50;
-        baseForensics.inventory_t_minus_1 = baseForensics.inventory_t * 0.50;
-      }
-
-      const payload = {
-        company_name: company,
-        ticker: ticker,
-        equity_market_cap: E,
-        equity_volatility: eqVol,
-        short_term_debt: std,
-        long_term_debt: ltd,
-        risk_free_rate: r,
-        simulate_beneish_manipulation: simManip,
-        simulate_working_capital_stress: simCCC,
-        merton_input: {
-          equity_value: E,
-          equity_volatility: eqVol,
-          short_term_debt: std,
-          long_term_debt: ltd,
-          risk_free_rate: r,
-          maturity: 1.0,
-          loss_given_default: 0.45
-        },
-        forensic_input: baseForensics,
-        is_financial_institution: Boolean(loadedBorrower && loadedBorrower.forensics_applicable === false),
-        loan_exposure: Math.max(std + ltd, 100.0),
-        loan_tenor_years: 5
-      };
+      const payload = buildActivePayload(E, eqVol, std, ltd, r, simManip, simCCC);
 
       try {
         const response = await fetch('/api/v1/credit/export-memo', {

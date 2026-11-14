@@ -25,6 +25,7 @@ try:
         IFRS9StageInput,
         ComprehensiveCreditRequest,
         ComprehensiveCreditResponse,
+        ComprehensiveCreditAssessment,
         AegisInternalRiskBand,
         DEFAULT_REGULATORY_DISCLAIMER,
     )
@@ -56,6 +57,8 @@ try:
         generate_credit_charts,
         generate_credit_memo_html,
         generate_credit_memo_pdf,
+        generate_credit_memo_pdf_reportlab,
+        format_currency,
     )
     from aegis_engine.api.main import app
 except ModuleNotFoundError:
@@ -69,6 +72,7 @@ except ModuleNotFoundError:
         IFRS9StageInput,
         ComprehensiveCreditRequest,
         ComprehensiveCreditResponse,
+        ComprehensiveCreditAssessment,
         AegisInternalRiskBand,
         DEFAULT_REGULATORY_DISCLAIMER,
     )
@@ -100,6 +104,8 @@ except ModuleNotFoundError:
         generate_credit_charts,
         generate_credit_memo_html,
         generate_credit_memo_pdf,
+        generate_credit_memo_pdf_reportlab,
+        format_currency,
     )
     from api.main import app
 
@@ -1828,6 +1834,203 @@ def test_export_memo_with_forensic_override_toggles(clean_forensic_input):
     assert "Aegis_Credit_Memo_Forensic_Override_Corp.pdf" in resp.headers["content-disposition"]
     assert resp.content.startswith(b"%PDF")
     assert len(resp.content) > 50_000
+
+
+# =====================================================================
+# 18. SINGLE SOURCE OF TRUTH, PRECISION FORMATTING & BALANCE SHEET VALIDATION
+# =====================================================================
+
+def test_memo_values_match_dashboard_engine_outputs(clean_forensic_input):
+    """
+    Single Source of Truth: PDF/HTML memo must bind directly to the exact state object
+    returned by the core engine and displayed on the dashboard without independent verdict overrides.
+    """
+    payload = {
+        "company_name": "Synchronized Risk Corp",
+        "ticker": "SYNC",
+        "equity_market_cap": 250.0,
+        "equity_volatility": 0.32,
+        "short_term_debt": 35.0,
+        "long_term_debt": 110.0,
+        "risk_free_rate": 0.045,
+        "forensic_input": clean_forensic_input.model_dump(),
+        "is_financial_institution": False,
+        "loan_exposure": 120.0,
+        "loan_tenor_years": 5
+    }
+
+    # 1. Obtain dashboard engine output via API
+    resp = client.post("/api/v1/credit/comprehensive", json=payload)
+    assert resp.status_code == 200
+    engine_data = resp.json()
+
+    # Reconstruct assessment object
+    assessment = ComprehensiveCreditAssessment(**engine_data)
+
+    # 2. Compile HTML and PDF memo
+    html_memo = generate_credit_memo_html(assessment)
+    pdf_bytes = generate_credit_memo_pdf_reportlab(assessment)
+
+    # 3. Verify exact single source of truth parity across engine outputs and memo
+    # Internal Risk Band
+    assert assessment.internal_risk_band in html_memo
+    # Indicative Stance / Recommendation
+    assert assessment.indicative_stance in html_memo
+    assert assessment.recommendation in html_memo
+    # IFRS 9 Stage Name
+    assert assessment.ifrs9_ecl.stage_name in html_memo
+    # Beneish M-Score
+    m_score_str = f"{assessment.forensics.beneish.m_score:.2f}"
+    assert m_score_str in html_memo
+    # Altman Z''-Score
+    z_str = f"{assessment.forensics.altman.z_double_prime:.2f}"
+    assert z_str in html_memo
+    # Cash Conversion Cycle
+    ccc_str = f"{assessment.forensics.ccc.ccc_t:.1f}"
+    assert ccc_str in html_memo
+    # PDF generation succeeds and contains content
+    assert len(pdf_bytes) > 20_000
+
+
+def test_currency_precision_renders_5_5k_not_zero(clean_forensic_input):
+    """
+    Currency Rounding & Precision Fix: Sub-$10k monetary values (such as a $5.5k allowance)
+    must preserve precision accurately (e.g., $5.5k or exact dollar amounts) without truncating to $0.
+    """
+    from services.market_data import _fmt_m
+
+    # 1. Test unit formatting function format_currency
+    # Sub-$10k in millions ($0.0055M = $5,500)
+    assert format_currency(0.0055) == "$5.5k"
+    assert format_currency(0.0055, is_millions=True) == "$5.5k"
+    # Exact dollar amounts
+    assert format_currency(5500.0) == "$5.5k"
+    assert format_currency(5500.0, is_millions=False) == "$5.5k"
+    assert format_currency(250.0, is_millions=False) == "$250.00"
+    # Zero handling
+    assert format_currency(0.0) == "$0"
+    assert format_currency(None) == "$0"
+    # Larger tiers
+    assert format_currency(12.5, is_millions=True) == "$12.50M"
+    assert format_currency(2500.0, is_millions=True) == "$2.50B"
+
+    # 2. Test market data short label formatting
+    assert _fmt_m(0.0055) == "$5.5k"
+    assert _fmt_m(0.080) == "$80.0k"
+
+    # 3. Test memo generation with a $5.5k total ECL allowance
+    payload = {
+        "company_name": "Precision Test Corp",
+        "ticker": "PREC",
+        "equity_market_cap": 250.0,
+        "equity_volatility": 0.32,
+        "short_term_debt": 35.0,
+        "long_term_debt": 110.0,
+        "risk_free_rate": 0.045,
+        "forensic_input": clean_forensic_input.model_dump(),
+        "is_financial_institution": False,
+        "loan_exposure": 120.0,
+        "loan_tenor_years": 5
+    }
+    resp = client.post("/api/v1/credit/comprehensive", json=payload)
+    assert resp.status_code == 200
+    data = resp.json()
+
+    # Set total ECL to $5.5k ($0.0055M)
+    data["ifrs9_ecl"]["total_ecl"] = 0.0055
+    data["ifrs9_ecl"]["period_schedules"][0]["discounted_ecl"] = 0.0055
+    assessment_5k = ComprehensiveCreditAssessment(**data)
+
+    memo_html = generate_credit_memo_html(assessment_5k)
+    # Must contain $5.5k
+    assert "$5.5k" in memo_html
+    # Must NOT display as $0
+    assert "$0 (" not in memo_html
+
+
+def test_balance_sheet_liability_validation_and_sample_data_integrity(clean_forensic_input):
+    """
+    Balance Sheet Validation & Sample Data Integrity:
+    1. Rejects current_liabilities > total_liabilities (and current_assets > total_assets).
+    2. Ensures sample data does not artificially inflate Altman Z''-Score (such as 10.19).
+    """
+    valid_data = clean_forensic_input.model_dump()
+
+    # 1. Validation check: current_liabilities > total_liabilities
+    bad_cl_data = dict(valid_data)
+    bad_cl_data["current_liabilities_t"] = 500.0
+    bad_cl_data["total_liabilities_t"] = 400.0  # CL > TL violates accounting identity
+    with pytest.raises(ValueError, match="Accounting Identity Failure: Current liabilities .* exceeds total liabilities"):
+        ForensicInput(**bad_cl_data)
+
+    # 2. Validation check: current_assets > total_assets
+    bad_ca_data = dict(valid_data)
+    bad_ca_data["current_assets_t"] = 1200.0
+    bad_ca_data["total_assets_t"] = 1000.0  # CA > TA violates accounting identity
+    with pytest.raises(ValueError, match="Accounting Identity Failure: Current assets .* exceeds total assets"):
+        ForensicInput(**bad_ca_data)
+
+    # 3. Validation via API endpoint returns HTTP 422
+    api_payload = {
+        "company_name": "Invalid Balance Sheet Corp",
+        "ticker": "INVAL",
+        "equity_market_cap": 200.0,
+        "equity_volatility": 0.35,
+        "short_term_debt": 30.0,
+        "long_term_debt": 100.0,
+        "risk_free_rate": 0.045,
+        "forensic_input": bad_cl_data,
+        "loan_exposure": 100.0
+    }
+    resp = client.post("/api/v1/credit/comprehensive", json=api_payload)
+    assert resp.status_code == 422
+    assert "Accounting Identity Failure: Current liabilities" in resp.text
+
+    # 4. Built-in sample/demo dataset integrity check
+    # Check sample baseline from frontend: Total Liabilities (550) >= Current Liabilities (250)
+    sample_baseline = ForensicInput(
+        sales_t=1200.0, cogs_t=750.0, receivables_t=180.0, current_assets_t=500.0,
+        ppe_t=600.0, total_assets_t=1200.0, depreciation_t=60.0, sga_t=180.0,
+        net_income_t=90.0, cash_flow_operations_t=110.0, current_liabilities_t=250.0,
+        long_term_debt_t=300.0, total_liabilities_t=550.0, inventory_t=180.0,
+        accounts_payable_t=120.0, ebit_t=160.0, retained_earnings_t=350.0,
+        book_value_equity_t=650.0,
+        sales_t_minus_1=1100.0, cogs_t_minus_1=690.0, receivables_t_minus_1=160.0,
+        current_assets_t_minus_1=460.0, ppe_t_minus_1=580.0, total_assets_t_minus_1=1120.0,
+        depreciation_t_minus_1=55.0, sga_t_minus_1=165.0, long_term_debt_t_minus_1=280.0,
+        total_liabilities_t_minus_1=510.0, inventory_t_minus_1=165.0,
+        accounts_payable_t_minus_1=110.0
+    )
+    baseline_altman = calculate_altman_z_double_prime(sample_baseline)
+    assert baseline_altman.zone == "Safe"
+    assert pytest.approx(baseline_altman.z_double_prime, abs=0.1) == 4.45
+    assert baseline_altman.z_double_prime != pytest.approx(10.19, abs=0.5)
+
+    # Check slider synchronized sample: STD=30, LTD=100 -> CL=150, TL=250, TA=900, BVE=650
+    sample_synced = ForensicInput(
+        sales_t=1000.0, cogs_t=600.0, receivables_t=120.0,
+        current_assets_t=450.0, ppe_t=450.0, total_assets_t=900.0,
+        depreciation_t=50.0, sga_t=150.0, net_income_t=100.0,
+        cash_flow_operations_t=120.0,
+        current_liabilities_t=150.0,
+        long_term_debt_t=100.0,
+        total_liabilities_t=250.0,  # TL (250) >= CL (150), strictly valid!
+        inventory_t=150.0, accounts_payable_t=100.0,
+        ebit_t=150.0, retained_earnings_t=300.0,
+        book_value_equity_t=650.0,  # TA (900) - TL (250) = 650
+        sales_t_minus_1=950.0, cogs_t_minus_1=570.0, receivables_t_minus_1=114.0,
+        current_assets_t_minus_1=420.0, ppe_t_minus_1=480.0, total_assets_t_minus_1=900.0,
+        depreciation_t_minus_1=48.0, sga_t_minus_1=142.0,
+        current_liabilities_t_minus_1=150.0,
+        long_term_debt_t_minus_1=100.0,
+        total_liabilities_t_minus_1=250.0,
+        inventory_t_minus_1=140.0, accounts_payable_t_minus_1=95.0
+    )
+    altman_out = calculate_altman_z_double_prime(sample_synced)
+    assert altman_out.zone == "Safe"
+    assert altman_out.z_double_prime > 2.60
+    assert altman_out.z_double_prime != pytest.approx(10.19, abs=0.5)
+
 
 
 

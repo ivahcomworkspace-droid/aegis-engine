@@ -43,82 +43,49 @@ except ModuleNotFoundError:
     )
 
 
+def format_currency(val: Optional[float], is_millions: Optional[bool] = None) -> str:
+    """
+    Formats currency amounts with adaptive precision, preserving small values accurately
+    without truncating sub-$10k figures (such as $5.5k) to $0.
+    """
+    if val is None:
+        return "$0"
+    v = float(val)
+    if abs(v) < 1e-9:
+        return "$0"
+
+    # Auto-detect whether value is expressed in millions ($M) or raw dollars:
+    # In the Aegis engine, values with 0.0 < abs(v) < 1.0 (such as 0.0055) represent $M ($5.5k).
+    if is_millions is True or (is_millions is None and 0.0 < abs(v) < 1.0):
+        dollars = v * 1_000_000.0
+    else:
+        dollars = v
+
+    abs_dollars = abs(dollars)
+    if abs_dollars >= 1e12:
+        return f"${dollars / 1e12:,.2f}T"
+    elif abs_dollars >= 1e9:
+        return f"${dollars / 1e9:,.2f}B"
+    elif abs_dollars >= 1e6:
+        return f"${dollars / 1e6:,.2f}M"
+    elif abs_dollars >= 1e3:
+        k_val = dollars / 1e3
+        return f"${k_val:.1f}k"
+    else:
+        return f"${dollars:,.2f}"
+
+
 def _reconcile_assessment(assessment: ComprehensiveCreditAssessment) -> Tuple[ComprehensiveCreditAssessment, str]:
     """
-    Reconciles underwriting directive banner, SICR trigger thresholds,
-    multi-period IFRS 9 ECL amortization schedules, and dynamic executive narrative.
+    Pass-through binder ensuring the exported PDF memo directly binds to the exact
+    state object returned by the core engine and displayed on the dashboard without
+    any independent or hardcoded verdict/staging overrides.
     """
-    m = assessment.merton
-    f = assessment.forensics
-    ecl = assessment.ifrs9_ecl
-    dd = m.distance_to_default_physical
-
-    # 1. Align SICR watch (DD < 2.0 sigma): ensure multi-year Stage 2 lifetime schedule
-    if dd < 2.0:
-        if (ecl.assigned_stage == 1 or len(ecl.period_schedules) <= 1 or not ecl.is_lifetime_ecl) and ecl.assigned_stage != 3:
-            pit_pd = max(min(m.default_probability_physical, 0.999), 0.0001)
-            initial_ead = ecl.period_schedules[0].ead if ecl.period_schedules else max(m.default_barrier * 1.25, 1_000_000.0)
-            tenor = 5
-            ead_schedule = [initial_ead * ((tenor - i) / tenor) for i in range(tenor)]
-
-            recomputed_ecl = calculate_ifrs9_ecl(
-                IFRS9StageInput(
-                    current_distance_to_default=dd,
-                    origination_distance_to_default=dd + 1.5,
-                    current_pd=pit_pd,
-                    days_past_due=30,
-                    is_credit_impaired=False,
-                    ead_schedule=ead_schedule,
-                    effective_interest_rate=0.06,
-                )
-            )
-            ecl = recomputed_ecl
-
-    # 2. Align directive text: if Stage 1 is selected, adjust directive banner to state "PRIME / STABLE QUALITY"
-    if ecl.assigned_stage == 1:
-        rec_directive = "PRIME / STABLE QUALITY"
-    elif ecl.assigned_stage == 3:
-        rec_directive = assessment.recommendation
-    elif dd < 2.0 or ecl.assigned_stage == 2:
-        rec_directive = "MONITOR CLOSELY: Significant increase in credit risk (SICR) observed; quarterly debt covenants required."
-    else:
-        rec_directive = assessment.recommendation
-
-    # 3. Dynamic Narrative Reconciler: prevent stale Stage 1 narrative when borrower is Stage 2
-    total_ecl = ecl.total_ecl
-    ecl_pct = ecl.ecl_percentage_of_ead
-    if ecl.assigned_stage == 2:
-        stage_desc = f"Classified under IFRS 9 as Stage 2 (Underperforming - SICR) with lifetime ECL allowance of ${total_ecl:,.0f} ({ecl_pct:.2f}%)."
-    elif ecl.assigned_stage == 1:
-        stage_desc = f"Classified under IFRS 9 as Stage 1 (Performing - 12-Month ECL) with 12-month ECL allowance of ${total_ecl:,.0f} ({ecl_pct:.2f}%)."
-    else:
-        stage_desc = f"Classified under IFRS 9 as Stage 3 (Credit-Impaired) with lifetime ECL allowance of ${total_ecl:,.0f} ({ecl_pct:.2f}%)."
-
-    if not getattr(f, "is_financial_institution", False):
-        forensic_clause = (
-            f"Altman Z'' of {f.altman.z_double_prime:.2f} ({f.altman.zone}), and Beneish M-Score of {f.beneish.m_score:.2f} "
-            f"({'MANIPULATION ALERT' if f.beneish.is_manipulator else 'CLEAN'})"
-        )
-    else:
-        # Financial companies: the scores are shown for reference only; they are calibrated on non-financial companies
-        forensic_clause = "forensic scores shown for reference only (calibrated on non-financial companies)"
-        f = f.model_copy(update={"summary_findings": [
-            "Financial-sector borrower: Beneish, Altman Z'' and cash-cycle scores are calibrated on non-financial "
-            "companies and were excluded from the risk band."
-        ]})
-
-    reconciled_summary = (
-        f"Borrower exhibits physical Distance-to-Default of {dd:.2f}σ (PD: {m.default_probability_physical:.3%}), "
-        f"{forensic_clause}. {stage_desc}"
+    rec_directive = (
+        getattr(assessment, "indicative_stance", None)
+        or getattr(assessment, "recommendation", None)
+        or "INDICATIVE: ACCEPTABLE RISK / MONITOR"
     )
-
-    assessment = assessment.model_copy(update={
-        "ifrs9_ecl": ecl,
-        "forensics": f,
-        "recommendation": rec_directive,
-        "executive_summary": reconciled_summary,
-    })
-
     return assessment, rec_directive
 
 
@@ -130,7 +97,6 @@ def generate_credit_charts(assessment: ComprehensiveCreditAssessment) -> Dict[st
     3. Vasicek Macro Loss Distribution & IFRS 9 ECL Staging.
     Returns dictionary mapping chart names to PNG byte streams.
     """
-    assessment, _ = _reconcile_assessment(assessment)
     charts: Dict[str, bytes] = {}
 
     plt.style.use('fast')
@@ -315,7 +281,7 @@ def generate_credit_memo_html(assessment: ComprehensiveCreditAssessment) -> str:
     f = assessment.forensics
     v = assessment.vasicek
     ecl = assessment.ifrs9_ecl
-    stage_badge = f"Stage {ecl.assigned_stage}"
+    stage_badge = getattr(ecl, "stage_name", None) or f"Stage {ecl.assigned_stage}"
 
     band_text = (
         getattr(assessment, "internal_risk_band", None)
@@ -346,7 +312,7 @@ def generate_credit_memo_html(assessment: ComprehensiveCreditAssessment) -> str:
 
     schedule_rows = "".join([
         f"<tr><td>Y{p.period}</td><td>{p.marginal_pd*100:.2f}%</td><td>{p.cumulative_pd*100:.2f}%</td>"
-        f"<td>{p.survival_probability*100:.2f}%</td><td>${p.ead:,.0f}</td><td>${p.discounted_ecl:,.2f}</td></tr>"
+        f"<td>{p.survival_probability*100:.2f}%</td><td>${p.ead:,.1f}M</td><td>{format_currency(p.discounted_ecl)}</td></tr>"
         for p in ecl.period_schedules
     ])
 
@@ -527,7 +493,7 @@ def generate_credit_memo_html(assessment: ComprehensiveCreditAssessment) -> str:
   </div>
   <div class="meta-cell">
     <strong>Total ECL Allowance</strong>
-    <span>${ecl.total_ecl:,.0f} ({ecl.ecl_percentage_of_ead:.2f}%)</span>
+    <span>{format_currency(ecl.total_ecl)} ({ecl.ecl_percentage_of_ead:.2f}%)</span>
   </div>
 </div>
 
@@ -568,7 +534,7 @@ def generate_credit_memo_html(assessment: ComprehensiveCreditAssessment) -> str:
     <th>Manipulation Flag</th>
     <th>Altman Z''-Score</th>
     <th>Altman Solvency Zone</th>
-    <th>Δ Cash Conversion Cycle</th>
+    <th>Cash Conversion Cycle</th>
   </tr>
   <tr>
     <td><b>{f.beneish.m_score:.2f}</b></td>
@@ -578,7 +544,7 @@ def generate_credit_memo_html(assessment: ComprehensiveCreditAssessment) -> str:
     <td><b>{f.altman.z_double_prime:.2f}</b></td>
     <td><b>{f.altman.zone}</b></td>
     <td style="color: {'#dc2626' if f.ccc.warning_triggered else '#0f172a'}; font-weight: bold;">
-      {f.ccc.delta_ccc:+.1f} days
+      {f.ccc.ccc_t:.1f} days (Δ {f.ccc.delta_ccc:+.1f}d)
     </td>
   </tr>
 </table>
@@ -605,8 +571,8 @@ def generate_credit_memo_html(assessment: ComprehensiveCreditAssessment) -> str:
     <td>{v.asset_correlation_rho:.4f}</td>
     <td><b>{v.stress_scenarios.get(list(v.stress_scenarios.keys())[-1], 0)*100:.2f}%</b></td>
     <td>{v.regulatory_capital_k*100:.2f}%</td>
-    <td>${v.expected_loss:,.0f}</td>
-    <td>${v.unexpected_loss:,.0f}</td>
+    <td>{format_currency(v.expected_loss)}</td>
+    <td>{format_currency(v.unexpected_loss)}</td>
   </tr>
 </table>
 
@@ -712,7 +678,7 @@ def generate_credit_memo_pdf_reportlab(assessment: ComprehensiveCreditAssessment
     f = assessment.forensics
     v = assessment.vasicek
     ecl = assessment.ifrs9_ecl
-    stage_badge = f"Stage {ecl.assigned_stage}"
+    stage_badge = getattr(ecl, "stage_name", None) or f"Stage {ecl.assigned_stage}"
 
     band_text = (
         getattr(assessment, "internal_risk_band", None)
@@ -729,7 +695,7 @@ def generate_credit_memo_pdf_reportlab(assessment: ComprehensiveCreditAssessment
             Paragraph("<b>Borrower:</b> " + assessment.company_name, body_style),
             Paragraph("<b>Risk Band:</b> " + band_text, body_style),
             Paragraph(f"<b>IFRS 9:</b> {stage_badge}", body_style),
-            Paragraph(f"<b>Total ECL:</b> ${ecl.total_ecl:,.0f}", body_style)
+            Paragraph(f"<b>Total ECL:</b> {format_currency(ecl.total_ecl)}", body_style)
         ]
     ]
     meta_table = Table(meta_data, colWidths=[1.8*inch, 1.4*inch, 1.8*inch, 2.0*inch])
@@ -785,13 +751,13 @@ def generate_credit_memo_pdf_reportlab(assessment: ComprehensiveCreditAssessment
     # Section 2: Forensics
     story.append(Paragraph("2. Balance Sheet Forensics & Working Capital Stress", section_heading))
     forensic_table_data = [
-        ["Beneish M-Score", "Manipulation Flag", "Altman Z''-Score", "Altman Zone", "Δ CCC (Days)"],
+        ["Beneish M-Score", "Manipulation Flag", "Altman Z''-Score", "Altman Zone", "Cash Conversion Cycle"],
         [
             f"{f.beneish.m_score:.2f}",
             "ACTIVE FLAG" if f.beneish.is_manipulator else "Clean",
             f"{f.altman.z_double_prime:.2f}",
             f.altman.zone,
-            f"{f.ccc.delta_ccc:+.1f} days"
+            f"{f.ccc.ccc_t:.1f} days (Δ {f.ccc.delta_ccc:+.1f}d)"
         ]
     ]
     t2 = Table(forensic_table_data, colWidths=[1.4*inch, 1.4*inch, 1.4*inch, 1.4*inch, 1.4*inch])

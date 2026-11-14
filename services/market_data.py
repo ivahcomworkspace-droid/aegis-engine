@@ -277,14 +277,20 @@ def _millions(value: Optional[float]) -> Optional[float]:
 
 
 def _fmt_m(value_m: float) -> str:
-    """$ millions as a short label, matching the dashboard: $3.96T, $31.1B, $4.39B, $80.0M."""
+    """$ millions as a short label, matching the dashboard: $3.96T, $31.1B, $4.39B, $80.0M, $5.5k."""
     size = abs(value_m)
     if size >= 1_000_000:
         return f"${value_m / 1_000_000:,.2f}T"
     if size >= 1_000:
         decimals = 0 if size >= 100_000 else 1 if size >= 10_000 else 2
         return f"${value_m / 1_000:,.{decimals}f}B"
-    return f"${value_m:,.1f}M"
+    if size >= 1.0:
+        return f"${value_m:,.1f}M"
+    if size >= 1e-3:
+        return f"${value_m * 1_000:,.1f}k"
+    if size > 0:
+        return f"${value_m * 1_000_000:,.0f}"
+    return "$0"
 
 
 def _describe(exc: BaseException) -> str:
