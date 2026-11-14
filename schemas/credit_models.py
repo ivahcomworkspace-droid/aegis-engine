@@ -387,6 +387,28 @@ class ComprehensiveCreditRequest(BaseModel):
                 if std_num + ltd_num > 0:
                     data.setdefault("loan_exposure", std_num + ltd_num)
 
+            # Direct root-level aliases and overrides from active frontend state
+            if "equity_value" in data and "equity_market_cap" not in data:
+                eq_v = _extract_val(data["equity_value"])
+                if eq_v is not None:
+                    data["equity_market_cap"] = float(eq_v)
+            if "equity_vol" in data and "equity_volatility" not in data:
+                vol_v = _extract_val(data["equity_vol"])
+                if vol_v is not None:
+                    data["equity_volatility"] = float(vol_v)
+            if "rfr" in data and "risk_free_rate" not in data:
+                r_v = _extract_val(data["rfr"])
+                if r_v is not None:
+                    data["risk_free_rate"] = float(r_v)
+            if "simulate_manipulation" in data and "simulate_beneish_manipulation" not in data:
+                data["simulate_beneish_manipulation"] = bool(data["simulate_manipulation"])
+            if "simulate_ccc_stress" in data and "simulate_working_capital_stress" not in data:
+                data["simulate_working_capital_stress"] = bool(data["simulate_ccc_stress"])
+            if "chkManipulator" in data and "simulate_beneish_manipulation" not in data:
+                data["simulate_beneish_manipulation"] = bool(data["chkManipulator"])
+            if "chkCCCAlert" in data and "simulate_working_capital_stress" not in data:
+                data["simulate_working_capital_stress"] = bool(data["chkCCCAlert"])
+
             if f_in and isinstance(f_in, dict):
                 ta = _extract_val(f_in.get("total_assets_t"))
                 if ta is not None:

@@ -1770,8 +1770,64 @@ def test_export_underwriting_memo_pdf_endpoint(clean_forensic_input):
     assert len(resp.content) > 50_000
 
 
+def test_export_memo_with_active_slider_values(clean_forensic_input):
+    """Verify export-memo accepts and serializes active slider values directly into PDF generation."""
+    payload = {
+        "company_name": "Active Stressed Corp",
+        "ticker": "STRS",
+        "equity_market_cap": 450.0,
+        "equity_volatility": 0.45,
+        "short_term_debt": 65.0,
+        "long_term_debt": 185.0,
+        "risk_free_rate": 0.052,
+        "forensic_input": clean_forensic_input.model_dump(),
+        "is_financial_institution": False,
+        "loan_exposure": 250.0,
+        "loan_tenor_years": 5
+    }
+    resp = client.post("/api/v1/credit/export-memo", json=payload)
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/pdf"
+    assert "Aegis_Credit_Memo_Active_Stressed_Corp.pdf" in resp.headers["content-disposition"]
+    assert resp.content.startswith(b"%PDF")
+    assert len(resp.content) > 50_000
 
 
+def test_export_memo_with_forensic_override_toggles(clean_forensic_input):
+    """Verify export-memo serializes forensic override toggles (manipulation & CCC stress) into PDF generation."""
+    payload = {
+        "company_name": "Forensic Override Corp",
+        "ticker": "FOVR",
+        "equity_market_cap": 300.0,
+        "equity_volatility": 0.30,
+        "short_term_debt": 40.0,
+        "long_term_debt": 120.0,
+        "risk_free_rate": 0.045,
+        "simulate_beneish_manipulation": True,
+        "simulate_working_capital_stress": True,
+        "forensic_input": clean_forensic_input.model_dump(),
+        "is_financial_institution": False,
+        "loan_tenor_years": 5
+    }
+    # Verify comprehensive assessment endpoint processes overrides correctly
+    comp_resp = client.post("/api/v1/credit/comprehensive", json=payload)
+    assert comp_resp.status_code == 200
+    comp_data = comp_resp.json()
+    assert comp_data["forensics"]["beneish"]["is_manipulator"] is True
+    assert comp_data["forensics"]["beneish"]["m_score"] > -1.78
+    assert comp_data["internal_risk_band"] in [
+        AegisInternalRiskBand.BAND_5.value,
+        AegisInternalRiskBand.BAND_6.value,
+        AegisInternalRiskBand.BAND_7.value,
+    ]
+
+    # Verify export memo PDF compiles successfully with these overrides
+    resp = client.post("/api/v1/credit/export-memo", json=payload)
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/pdf"
+    assert "Aegis_Credit_Memo_Forensic_Override_Corp.pdf" in resp.headers["content-disposition"]
+    assert resp.content.startswith(b"%PDF")
+    assert len(resp.content) > 50_000
 
 
 

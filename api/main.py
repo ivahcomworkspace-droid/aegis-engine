@@ -418,7 +418,13 @@ async def comprehensive_assessment_endpoint(req: ComprehensiveCreditRequest) -> 
     try:
         # 1. Structural Merton Input
         if req.merton_input is not None:
-            m_in = req.merton_input
+            m_in = req.merton_input.model_copy(update={
+                "equity_value": req.equity_market_cap,
+                "equity_volatility": req.equity_volatility,
+                "short_term_debt": req.short_term_debt,
+                "long_term_debt": req.long_term_debt,
+                "risk_free_rate": req.risk_free_rate,
+            })
         else:
             m_in = MertonInput(
                 equity_value=req.equity_market_cap,
@@ -437,6 +443,19 @@ async def comprehensive_assessment_endpoint(req: ComprehensiveCreditRequest) -> 
             # The request-level flag also applies to supplied statements (the dashboard sends both)
             if req.is_financial_institution and not f_in.is_financial_institution:
                 f_in = f_in.model_copy(update={"is_financial_institution": True})
+
+            # Apply active simulation flags directly to supplied statements if not already applied
+            forensic_updates = {}
+            if req.simulate_beneish_manipulation:
+                forensic_updates["sales_t_minus_1"] = f_in.sales_t * 0.70
+                forensic_updates["receivables_t_minus_1"] = f_in.receivables_t * 0.30
+                forensic_updates["cogs_t_minus_1"] = f_in.cogs_t * 0.50
+                forensic_updates["cash_flow_operations_t"] = f_in.ebit_t * 0.10
+            if req.simulate_working_capital_stress:
+                forensic_updates["receivables_t_minus_1"] = f_in.receivables_t * 0.50
+                forensic_updates["inventory_t_minus_1"] = f_in.inventory_t * 0.50
+            if forensic_updates:
+                f_in = f_in.model_copy(update=forensic_updates)
         else:
             sales = req.revenue
             cogs = req.cogs
@@ -512,6 +531,17 @@ async def comprehensive_assessment_endpoint(req: ComprehensiveCreditRequest) -> 
             forensics_res.beneish.data_quality_flags.append(
                 "Beneish/CCC requires two periods of comparative accounting data"
             )
+        if req.simulate_beneish_manipulation:
+            msg = "Simulated Beneish earnings manipulation override active (M > -1.78)"
+            if msg not in forensics_res.beneish.red_flags:
+                forensics_res.beneish.red_flags.append(msg)
+            finding = "Scenario Stress Override: Simulated Beneish earnings manipulation active."
+            if finding not in forensics_res.summary_findings:
+                forensics_res.summary_findings.append(finding)
+        if req.simulate_working_capital_stress:
+            finding = "Scenario Stress Override: Simulated working capital stress active (ΔCCC > +25d)."
+            if finding not in forensics_res.summary_findings:
+                forensics_res.summary_findings.append(finding)
 
         # 4. Vasicek ASRF
         pit_pd = max(min(merton_res.default_probability_physical, 0.999), 0.0001)

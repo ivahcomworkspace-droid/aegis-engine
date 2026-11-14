@@ -2886,6 +2886,11 @@
       btn.disabled = true;
       btnText.innerText = 'Compiling PDF...';
 
+      // Commit any in-flight typed chip input before serializing active state
+      if (document.activeElement && document.activeElement.classList.contains('uh-chip-input')) {
+        commitTypedValue(document.activeElement);
+      }
+
       const E = parseFloat(document.getElementById('rngEquity').value);
       const eqVol = parseFloat(document.getElementById('rngEqVol').value) / 100.0;
       const std = parseFloat(document.getElementById('rngSTD').value);
@@ -2893,6 +2898,32 @@
       const r = parseFloat(document.getElementById('rngRFR').value) / 100.0;
       const ticker = document.getElementById('inpTicker').value.trim() || 'APEX';
       const company = document.getElementById('inpCompany').value.trim() || 'Apex Industrial Corp';
+      const simManip = document.getElementById('chkManipulator').checked;
+      const simCCC = document.getElementById('chkCCCAlert').checked;
+
+      // Active base forensic input (filed reports when loaded, otherwise sample baseline)
+      let baseForensics = loadedBorrower && loadedBorrower.forensic_input 
+        ? JSON.parse(JSON.stringify(loadedBorrower.forensic_input))
+        : JSON.parse(JSON.stringify(SAMPLE_FORENSIC_INPUT));
+
+      // Synchronize debt & balance sheet in sample baseline with active slider values
+      if (!loadedBorrower || !loadedBorrower.forensic_input) {
+        baseForensics.long_term_debt_t = ltd;
+        baseForensics.total_liabilities_t = std + ltd;
+        baseForensics.total_assets_t = (std + ltd) + baseForensics.book_value_equity_t;
+      }
+
+      // Serialize active forensic simulation overrides
+      if (simManip) {
+        baseForensics.sales_t_minus_1 = baseForensics.sales_t * 0.70;
+        baseForensics.receivables_t_minus_1 = baseForensics.receivables_t * 0.30;
+        baseForensics.cogs_t_minus_1 = baseForensics.cogs_t * 0.50;
+        baseForensics.cash_flow_operations_t = (baseForensics.ebit_t || 160.0) * 0.10;
+      }
+      if (simCCC) {
+        baseForensics.receivables_t_minus_1 = baseForensics.receivables_t * 0.50;
+        baseForensics.inventory_t_minus_1 = baseForensics.inventory_t * 0.50;
+      }
 
       const payload = {
         company_name: company,
@@ -2902,6 +2933,8 @@
         short_term_debt: std,
         long_term_debt: ltd,
         risk_free_rate: r,
+        simulate_beneish_manipulation: simManip,
+        simulate_working_capital_stress: simCCC,
         merton_input: {
           equity_value: E,
           equity_volatility: eqVol,
@@ -2911,9 +2944,9 @@
           maturity: 1.0,
           loss_given_default: 0.45
         },
-        // The borrower's filed annual reports once loaded, otherwise the sample statements
-        forensic_input: loadedBorrower && loadedBorrower.forensic_input ? loadedBorrower.forensic_input : SAMPLE_FORENSIC_INPUT,
+        forensic_input: baseForensics,
         is_financial_institution: Boolean(loadedBorrower && loadedBorrower.forensics_applicable === false),
+        loan_exposure: Math.max(std + ltd, 100.0),
         loan_tenor_years: 5
       };
 
