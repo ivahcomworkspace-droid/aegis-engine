@@ -24,7 +24,8 @@ FROM python:3.11-slim AS runtime
 
 WORKDIR /app
 
-# Install native shared libraries for Cairo, Pango, and WeasyPrint PDF compilation
+# Install native shared libraries for Cairo, Pango, and WeasyPrint PDF compilation,
+# and the credit memo's typeface (Lato; DejaVu Sans is the fallback)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpango-1.0-0 \
     libharfbuzz0b \
@@ -33,6 +34,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libcairo2 \
     libgdk-pixbuf-2.0-0 \
     shared-mime-info \
+    fonts-lato \
+    fonts-dejavu-core \
     curl \
     && rm -rf /var/lib/apt/lists/*
 

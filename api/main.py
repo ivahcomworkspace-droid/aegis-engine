@@ -52,9 +52,9 @@ try:
     from aegis_engine.services.memo_generator import (
         generate_credit_memo_pdf,
         generate_credit_memo_html,
-        format_currency,
     )
     from aegis_engine.services.market_data import MarketDataError, company_directory, load_borrower
+    from aegis_engine.services.formatting import format_money_m, format_pd
 except ModuleNotFoundError:
     from schemas.credit_models import (
         MertonInput,
@@ -80,9 +80,9 @@ except ModuleNotFoundError:
     from services.memo_generator import (
         generate_credit_memo_pdf,
         generate_credit_memo_html,
-        format_currency,
     )
     from services.market_data import MarketDataError, company_directory, load_borrower
+    from services.formatting import format_money_m, format_pd
 
 app = FastAPI(
     title="Aegis Institutional Credit Risk & Forensics Engine",
@@ -359,13 +359,7 @@ def _compute_internal_risk_band_and_stance(
         band = AegisInternalRiskBand.BAND_1
         stance = "INDICATIVE: MINIMAL RISK / PRIME SOLVENCY — Exceptional asset backing & fortress liquidity coverage."
 
-    pd_val = float(merton_res.default_probability_physical)
-    if pd_val <= 0.0:
-        pd_disp = "0.000%"
-    elif pd_val * 100.0 >= 0.001:
-        pd_disp = f"{pd_val * 100.0:.3f}%"
-    else:
-        pd_disp = f"{pd_val * 100.0:.2e}%"
+    pd_disp = format_pd(merton_res.default_probability_physical)      # same format as the dashboard
 
     clean_forensics = (not is_manip) and (z_double >= 1.80 or not use_forensics)
     reconciliation_note = ""
@@ -386,7 +380,7 @@ def _compute_internal_risk_band_and_stance(
             else "forensic scores not applied (models built for non-financial firms). "
         )
         + f"IFRS 9 Staging: {ecl_res.stage_name} "
-        f"with ECL allowance of {format_currency(ecl_res.total_ecl)} ({ecl_res.ecl_percentage_of_ead:.2f}% EAD)."
+        f"with ECL allowance of {format_money_m(ecl_res.total_ecl)} ({ecl_res.ecl_percentage_of_ead:.3f}% of EAD)."
         + reconciliation_note
     )
 
@@ -587,6 +581,26 @@ async def comprehensive_assessment_endpoint(req: ComprehensiveCreditRequest) -> 
             merton_res, forensics_res, vasicek_res, ecl_res
         )
 
+        # What the assessment actually used, so the memo shows the same figures as the dashboard
+        inputs = {
+            "equity_value": m_in.equity_value,
+            "equity_volatility": m_in.equity_volatility,
+            "short_term_debt": m_in.short_term_debt,
+            "long_term_debt": m_in.long_term_debt,
+            "risk_free_rate": m_in.risk_free_rate,
+            "asset_drift_mu": m_in.drift_mu if m_in.drift_mu is not None else m_in.risk_free_rate,
+            "maturity_years": m_in.maturity,
+            "loss_given_default": m_in.loss_given_default,
+            "loan_exposure": ead,
+            "loan_tenor_years": tenor,
+            "effective_interest_rate": req.effective_interest_rate,
+            "origination_distance_to_default": orig_dd,
+            "days_past_due": req.days_past_due,
+            "pit_pd": pit_pd,
+            "simulate_beneish_manipulation": req.simulate_beneish_manipulation,
+            "simulate_working_capital_stress": req.simulate_working_capital_stress,
+        }
+
         return ComprehensiveCreditResponse(
             ticker=req.ticker or "",
             company_name=req.company_name,
@@ -603,6 +617,9 @@ async def comprehensive_assessment_endpoint(req: ComprehensiveCreditRequest) -> 
             composite_rating=band.value,
             vasicek=vasicek_res,
             executive_summary=summary,
+            inputs=inputs,
+            input_sources=req.input_sources,
+            forensic_basis=req.forensic_basis,
         )
     except (ValueError, ArithmeticError) as e:
         raise HTTPException(

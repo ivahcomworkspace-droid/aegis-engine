@@ -27,6 +27,10 @@ except ModuleNotFoundError:
         ECLResult,
     )
 
+# Absolute SICR backstop: below 2 sigma (a one-year PD above about 2.3%) a borrower is on the
+# watchlist whatever its origination, matching the Band 5 "SICR / surveillance" stance.
+SICR_WATCHLIST_DD = 2.0
+
 
 def calculate_corporate_asset_correlation(
     pd: float,
@@ -148,9 +152,9 @@ def calculate_vasicek_capital(
         "asset_correlation_rho": round(rho, 6),
         "conditional_pd": round(cond_pd_eval, 6),
         "regulatory_capital_k": round(float(k_ratio), 6),
-        "unexpected_loss": round(float(ul_currency), 2),
-        "expected_loss": round(float(el_currency), 2),
-        "economic_capital_ead": round(float(total_capital), 2),
+        "unexpected_loss": round(float(ul_currency), 6),
+        "expected_loss": round(float(el_currency), 6),
+        "economic_capital_ead": round(float(total_capital), 6),
         "stress_scenarios": scenarios,
     }
 
@@ -212,10 +216,18 @@ def calculate_ecl_staging_and_loss(
         )
         is_lifetime = True
         eval_periods = num_periods
-    elif delta_dd < -1.0 or dpd >= 30:
+    elif delta_dd < -1.0 or dpd >= 30 or current_distance_to_default < SICR_WATCHLIST_DD:
         assigned_stage = 2
         stage_name = "Stage 2 (Underperforming - SICR)"
-        trigger_reason = f"Delta DD = {delta_dd:+.2f}sigma (< -1.0sigma SICR threshold)" if delta_dd < -1.0 else f"DPD={dpd} in [30, 89]"
+        if delta_dd < -1.0:
+            trigger_reason = f"Delta DD = {delta_dd:+.2f}sigma (< -1.0sigma SICR threshold)"
+        elif dpd >= 30:
+            trigger_reason = f"DPD={dpd} in [30, 89]"
+        else:
+            trigger_reason = (
+                f"current DD = {current_distance_to_default:.2f}sigma "
+                f"(< {SICR_WATCHLIST_DD:.1f}sigma watchlist backstop)"
+            )
         stage_rationale = (
             f"Significant Increase in Credit Risk (SICR) triggered by {trigger_reason}. "
             f"Mandatory transition from 12-month to Lifetime ECL."
@@ -253,10 +265,10 @@ def calculate_ecl_staging_and_loss(
             "marginal_pd": 1.0,
             "cumulative_pd": 1.0,
             "survival_probability": 0.0,
-            "ead": round(ead_0, 2),
+            "ead": round(ead_0, 6),
             "lgd": round(lgd_0, 4),
             "discount_factor": round(discount_factor, 6),
-            "discounted_ecl": round(discounted_ecl_0, 2),
+            "discounted_ecl": round(discounted_ecl_0, 6),
         }]
         for t in range(2, eval_periods + 1):
             idx = t - 1
@@ -268,7 +280,7 @@ def calculate_ecl_staging_and_loss(
                 "marginal_pd": 0.0,
                 "cumulative_pd": 1.0,
                 "survival_probability": 0.0,
-                "ead": round(ead_t, 2),
+                "ead": round(ead_t, 6),
                 "lgd": round(lgd_t, 4),
                 "discount_factor": round(df_t, 6),
                 "discounted_ecl": 0.0,
@@ -300,10 +312,10 @@ def calculate_ecl_staging_and_loss(
                 "marginal_pd": round(float(marginal_pd), 6),
                 "cumulative_pd": round(float(cumulative_pd), 6),
                 "survival_probability": round(float(survival_t), 6),
-                "ead": round(float(ead_t), 2),
+                "ead": round(float(ead_t), 6),
                 "lgd": round(float(lgd_t), 4),
                 "discount_factor": round(float(discount_factor), 6),
-                "discounted_ecl": round(float(discounted_ecl_t), 2),
+                "discounted_ecl": round(float(discounted_ecl_t), 6),
             })
 
     initial_ead = float(ead_sched[0])
@@ -314,7 +326,7 @@ def calculate_ecl_staging_and_loss(
         "stage_name": stage_name,
         "stage_rationale": stage_rationale,
         "delta_distance_to_default": round(float(delta_dd), 4),
-        "total_ecl": round(float(total_ecl), 2),
+        "total_ecl": round(float(total_ecl), 6),
         "is_lifetime_ecl": is_lifetime,
         "ecl_percentage_of_ead": round(float(ecl_pct), 3),
         "period_schedules": schedules,

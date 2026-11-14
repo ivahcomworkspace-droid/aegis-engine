@@ -2,7 +2,7 @@
 
 [![Live Web Terminal](https://img.shields.io/badge/Live%20Demo-Render-00c7b7?style=for-the-badge&logo=render&logoColor=white)](https://aegis-engine-s96v.onrender.com)
 [![OpenAPI Docs](https://img.shields.io/badge/API%20Docs-FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://aegis-engine-s96v.onrender.com/docs)
-[![Pytest Suite](https://img.shields.io/badge/Tests-110%20Passed-brightgreen?style=for-the-badge)](tests/)
+[![Pytest Suite](https://img.shields.io/badge/Tests-123%20Passed-brightgreen?style=for-the-badge)](tests/)
 
 > **Live Production Terminal:** [https://aegis-engine-s96v.onrender.com](https://aegis-engine-s96v.onrender.com)  
 > **Interactive Swagger API:** [https://aegis-engine-s96v.onrender.com/docs](https://aegis-engine-s96v.onrender.com/docs)
@@ -122,7 +122,7 @@ $$
 $$
 
    - **Stage 1 (Performing):** 12-Month ECL ($T = 1$).
-   - **Stage 2 (Underperforming / SICR):** Lifetime ECL triggered when $\Delta\text{DD} < -1.0\sigma$ or $\text{DPD} \in [30, 89]$.
+   - **Stage 2 (Underperforming / SICR):** Lifetime ECL triggered when $\Delta\text{DD} < -1.0\sigma$, $\text{DPD} \in [30, 89]$, or $\text{DD} < 2.0\sigma$ (watchlist backstop, matching the Band 5 surveillance stance).
    - **Stage 3 (Credit Impaired):** Lifetime ECL with workout LGD on $\text{DPD} \ge 90$ or default flag.
 
 ---
@@ -141,7 +141,8 @@ aegis_engine/
 │   └── credit_models.py      # Pydantic v2 schemas enforcing balance sheet identities
 ├── services/
 │   ├── __init__.py
-│   ├── memo_generator.py     # Matplotlib visualizer & WeasyPrint/ReportLab PDF compiler
+│   ├── memo_generator.py     # Credit memo: vector charts, WeasyPrint PDF (ReportLab fallback)
+│   ├── formatting.py         # Money and PD formats shared with the dashboard
 │   └── market_data.py        # Live borrower data: SEC EDGAR, US Treasury yields, price feed
 ├── api/
 │   ├── __init__.py
@@ -151,8 +152,9 @@ aegis_engine/
 ├── tests/
 │   ├── __init__.py
 │   ├── conftest.py           # Pytest root configuration
-│   ├── test_engine.py        # 72 deterministic unit, numerical & integration tests
-│   └── test_market_data.py   # 38 offline tests for live borrower data, company list and financial-sector handling
+│   ├── test_engine.py        # 77 deterministic unit, numerical & integration tests
+│   ├── test_market_data.py   # 38 offline tests for live borrower data, company list and financial-sector handling
+│   └── test_memo.py          # 8 tests: the memo prints the dashboard's figures, formats and sources
 ├── .env.example              # Settings for live data (copy to .env, which git ignores)
 ├── Dockerfile                # Multi-stage production container build (python:3.11-slim)
 ├── requirements.txt          # Frozen production dependencies
@@ -191,7 +193,7 @@ cd aegis-engine
 # Install dependencies
 pip install -r requirements.txt
 
-# Run the test suite (107 tests, all offline)
+# Run the test suite (123 tests, all offline)
 python -m pytest tests -v
 
 # Enable live data: put your name or company and an email in AEGIS_SEC_USER_AGENT
@@ -232,6 +234,16 @@ Pick a company from the **Ticker** or **Company** dropdown in **Borrower Paramet
 - **Filings without standard tags:** when debt is only in company-specific tags (Ford, GM), liabilities stand in for it: current liabilities as short-term debt and the rest as long-term, KMV's original default point; an unclassified balance sheet (Berkshire) counts all liabilities as long-term. Companies with several share classes (Berkshire, Visa) are valued class by class from the latest filing's cover page, each listed class at its own price; when the filing doesn't say which class trades (Warner Music, most SPACs), every class is valued at the listed price. A preferred share, warrant, unit or note ticker is priced through the company's common stock, and companies with no listed common stock aren't marked (A). A new holding company without two annual reports yet (ExxonMobil Holdings, 2026) takes them from the registrant it replaced (`PREDECESSOR_CIKS`). Each fallback adds a note on screen.
 - **Licensed price feed:** add a provider class (`name`, `label`, `async history(client, symbol)`) to `PRICE_PROVIDERS` in `services/market_data.py` and select it with `AEGIS_PRICE_PROVIDER`.
 - **Caching:** filings are cached for 12 hours, Treasury yields for 6 hours and prices for 15 minutes in `.cache/market` (`AEGIS_CACHE_DIR` moves it).
+
+### Credit memo
+
+**Export Underwriting Memo** downloads an A4 PDF built from the same engine assessment the dashboard shows: the dashboard renders the response of `/api/v1/credit/comprehensive` and sends that very payload to `/api/v1/credit/export-memo`, so every figure on paper matches the screen (band, stance, IFRS 9 stage, distance to default, PD, ECL, forensic scores, stress PD). The memo covers:
+
+1. **Summary:** risk band, IFRS 9 stage, indicative stance, six key metrics and the key findings.
+2. **Inputs and sources:** each Merton input with its source and as-of date (SEC filing, Treasury yield, price feed, sample scenario or entered by hand).
+3. **Merton structural model**, **financial statement forensics** (scorecards, Beneish indices, Altman $Z''$ components, working-capital cycle), **Vasicek regulatory capital**, the **IFRS 9 ECL schedule**, and **method and limitations**.
+
+Money is in $ millions throughout and uses the dashboard's formats (`services/formatting.py`; a test runs the dashboard's own formatters against them). Charts are vector (SVG). The memo is set in Lato, which the Docker image installs (`fonts-lato`); elsewhere it falls back to Liberation Sans or DejaVu Sans. For banks and other financial companies the forensic scores read *n/a*, as on the dashboard.
 
 ---
 

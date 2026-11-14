@@ -1869,25 +1869,29 @@ def test_memo_values_match_dashboard_engine_outputs(clean_forensic_input):
 
     # 2. Compile HTML and PDF memo
     html_memo = generate_credit_memo_html(assessment)
+    # What the reader sees: tags dropped and entities decoded (the memo escapes text such as "&")
+    import html as html_lib
+    import re
+    memo_text = " ".join(html_lib.unescape(re.sub(r"<[^>]+>", " ", html_memo)).split())
     pdf_bytes = generate_credit_memo_pdf_reportlab(assessment)
 
     # 3. Verify exact single source of truth parity across engine outputs and memo
     # Internal Risk Band
-    assert assessment.internal_risk_band in html_memo
+    assert assessment.internal_risk_band in memo_text
     # Indicative Stance / Recommendation
-    assert assessment.indicative_stance in html_memo
-    assert assessment.recommendation in html_memo
+    assert assessment.indicative_stance in memo_text
+    assert assessment.recommendation in memo_text
     # IFRS 9 Stage Name
-    assert assessment.ifrs9_ecl.stage_name in html_memo
+    assert assessment.ifrs9_ecl.stage_name in memo_text
     # Beneish M-Score
     m_score_str = f"{assessment.forensics.beneish.m_score:.2f}"
-    assert m_score_str in html_memo
+    assert m_score_str in memo_text
     # Altman Z''-Score
     z_str = f"{assessment.forensics.altman.z_double_prime:.2f}"
-    assert z_str in html_memo
+    assert z_str in memo_text
     # Cash Conversion Cycle
     ccc_str = f"{assessment.forensics.ccc.ccc_t:.1f}"
-    assert ccc_str in html_memo
+    assert ccc_str in memo_text
     # PDF generation succeeds and contains content
     assert len(pdf_bytes) > 20_000
 

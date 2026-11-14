@@ -324,6 +324,12 @@ class ECLResult(BaseModel):
     period_schedules: List[ECLPeriodSchedule] = Field(..., description="Multi-period cash flow and loss schedule")
 
 
+class InputSource(BaseModel):
+    """Where one input came from, shown in the memo's inputs table."""
+    source: str = Field(..., max_length=240, description="Data source, e.g. 'SEC 10-Q balance sheet'")
+    as_of: Optional[str] = Field(default=None, max_length=40, description="Date the value refers to")
+
+
 class ComprehensiveCreditRequest(BaseModel):
     ticker: str = Field(..., min_length=1, max_length=12)
     company_name: str = Field(...)
@@ -366,6 +372,17 @@ class ComprehensiveCreditRequest(BaseModel):
     days_past_due: int = Field(default=0, ge=0)
     effective_interest_rate: float = Field(default=0.06, ge=0.0)
     loan_tenor_years: int = Field(default=5, ge=1, le=30)
+
+    # Provenance for the memo: where each Merton input came from and which statements fed the forensics
+    input_sources: Dict[str, InputSource] = Field(
+        default_factory=dict,
+        description="Source of each input, keyed by equity_value, equity_volatility, short_term_debt, "
+                    "long_term_debt and risk_free_rate",
+    )
+    forensic_basis: Optional[str] = Field(
+        default=None, max_length=200,
+        description="Statements behind the forensic scores, e.g. 'Filed financials · FY2025 vs FY2024'",
+    )
 
     @model_validator(mode='before')
     @classmethod
@@ -538,6 +555,12 @@ class ComprehensiveCreditResponse(BaseModel):
         default=None,
         description="Legacy alias for regulatory_capital"
     )
+    inputs: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Inputs the assessment used ($M for money, decimals for rates)"
+    )
+    input_sources: Dict[str, InputSource] = Field(default_factory=dict, description="Source of each input")
+    forensic_basis: Optional[str] = Field(default=None, description="Statements behind the forensic scores")
     timestamp: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
         description="Evaluation UTC timestamp"
